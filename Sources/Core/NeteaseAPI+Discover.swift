@@ -169,20 +169,19 @@ extension NeteaseAPI {
 
     /// 我喜欢的音乐曲目顺序（/playlist/detail）
     ///
-    /// 桌面端直接按 `tracks` 数组顺序展示，`trackIds` 用于补齐 `tracks` 未覆盖的曲目。
-    /// 这里只取 id、不做整段模型解码：歌单里个别异常条目（null、字段缺失等）不会导致
-    /// 整个响应解析失败，从而避免静默退回旧的 likelist 顺序。
-    /// `uid` 同时是「我喜欢的音乐」这个特殊歌单的 id。
-    func likedPlaylistTrackIDs(uid: Int, cookie: String) async throws -> [Int] {
+    /// `playlistID` 必须传用户歌单列表里的「我喜欢的音乐」歌单 id（specialType 5），
+    /// 它与用户 uid 不是同一个值，直接用 uid 会拿到无关歌单。
+    /// 顺序优先按 `trackIds` 的收藏时间（`at`）倒序，最新收藏在前。
+    func likedPlaylistTrackIDs(playlistID: Int, cookie: String) async throws -> [Int] {
         // 优先直连 music.163.com 网页版接口：内置服务在本机部分环境下的 /playlist/detail 会失败
-        if let data = try? await directPlaylistDetailData(uid: uid, cookie: cookie),
+        if let data = try? await directPlaylistDetailData(playlistID: playlistID, cookie: cookie),
            let ids = try? Self.playlistTrackIDs(from: data),
            !ids.isEmpty {
             return ids
         }
         let data = try await getData(
             "/playlist/detail",
-            query: ["id": String(uid)],
+            query: ["id": String(playlistID)],
             cookie: cookie
         )
         let ids = try Self.playlistTrackIDs(from: data)
@@ -191,12 +190,12 @@ extension NeteaseAPI {
     }
 
     /// 直连 music.163.com 的歌单详情（免加密通道，带登录 Cookie 访问私有歌单）
-    private func directPlaylistDetailData(uid: Int, cookie: String) async throws -> Data {
+    private func directPlaylistDetailData(playlistID: Int, cookie: String) async throws -> Data {
         guard var components = URLComponents(string: "https://music.163.com/api/v6/playlist/detail") else {
             throw APIError.badURL
         }
         components.queryItems = [
-            URLQueryItem(name: "id", value: String(uid)),
+            URLQueryItem(name: "id", value: String(playlistID)),
             URLQueryItem(name: "n", value: "100000"),
             URLQueryItem(name: "s", value: "0"),
         ]
@@ -218,7 +217,10 @@ extension NeteaseAPI {
         return data
     }
 
-    /// 从歌单详情 JSON 提取曲目顺序：tracks 数组顺序在前，trackIds 补充未覆盖的曲目
+    /// 从歌单详情 JSON 提取曲目顺序
+    ///
+    /// 优先按 `trackIds` 里的收藏时间（`at`）倒序，确保最新收藏在前；
+    /// 缺少时间字段时回退到接口顺序（tracks 在前，trackIds 补齐未覆盖的曲目）。
     static func playlistTrackIDs(from data: Data) throws -> [Int] {
         guard
             let object = try? JSONSerialization.jsonObject(with: data),
@@ -228,21 +230,49 @@ extension NeteaseAPI {
             throw APIError.invalidResponse
         }
 
+        let trackIdItems = playlist["trackIds"] as? [Any] ?? []
+        var entries: [(id: Int, at: Int64)] = []
+        var hasAddTime = true
+        for item in trackIdItems {
+            guard
+                let dict = item as? [String: Any],
+                let id = APIID.int(dict["id"]),
+                let at = APIID.int64(dict["at"])
+            else {
+                hasAddTime = false
+                break
+            }
+            entries.append((id, at))
+        }
+
         var ids: [Int] = []
-        for item in playlist["tracks"] as? [Any] ?? [] {
-            if let dict = item as? [String: Any], let id = APIID.int(dict["id"]) {
-                ids.append(id)
+        if hasAddTime, !entries.isEmpty {
+            // 收藏时间倒序；时间相同的保持接口原顺序
+            ids = entries.enumerated()
+                .sorted { lhs, rhs in
+                    if lhs.element.at != rhs.element.at {
+                        return lhs.element.at > rhs.element.at
+                    }
+                    return lhs.offset < rhs.offset
+                }
+                .map { $0.element.id }
+        } else {
+            for item in playlist["tracks"] as? [Any] ?? [] {
+                if let dict = item as? [String: Any], let id = APIID.int(dict["id"]) {
+                    ids.append(id)
+                }
             }
         }
-        let trackSet = Set(ids)
-        for item in playlist["trackIds"] as? [Any] ?? [] {
+
+        var seen = Set(ids)
+        for item in trackIdItems {
             let id: Int?
             if let dict = item as? [String: Any] {
                 id = APIID.int(dict["id"])
             } else {
                 id = APIID.int(item)
             }
-            if let id, !trackSet.contains(id) {
+            if let id, seen.insert(id).inserted {
                 ids.append(id)
             }
         }
@@ -374,6 +404,15 @@ private enum APIID {
         switch value {
         case let number as NSNumber: return number.intValue
         case let string as String: return Int(string)
+        default: return nil
+        }
+    }
+
+    static func int64(_ value: Any?) -> Int64? {
+        guard let value else { return nil }
+        switch value {
+        case let number as NSNumber: return number.int64Value
+        case let string as String: return Int64(string)
         default: return nil
         }
     }

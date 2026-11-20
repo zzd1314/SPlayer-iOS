@@ -193,20 +193,23 @@ struct LikedSongsView: View {
             let api = NeteaseAPI()
             let allIds = try await api.likeList(uid: uid, cookie: cookie)
 
-            // 与桌面端一致：按歌单详情返回的曲目数组顺序展示（最新收藏在前），不做额外过滤
+            // 「我喜欢的音乐」歌单 id 与 uid 不同，与桌面端一致取用户歌单列表的第一项（specialType 5）
+            let playlists = (try? await api.userPlaylists(uid: uid, cookie: cookie)) ?? []
+            var detailIds: [Int] = []
+            if let likedPlaylistID = playlists.first?.id {
+                detailIds = (try? await api.likedPlaylistTrackIDs(playlistID: likedPlaylistID, cookie: cookie)) ?? []
+            }
+
+            // 新版在前为主，likelist 补齐歌单详情未覆盖的曲目
             var orderedIds: [Int] = []
             var seen = Set<Int>()
-            let detailIds = (try? await api.likedPlaylistTrackIDs(uid: uid, cookie: cookie)) ?? []
-            for id in detailIds where seen.insert(id).inserted {
-                orderedIds.append(id)
+            for id in detailIds {
+                if seen.insert(id).inserted { orderedIds.append(id) }
             }
-            // 兜底：歌单详情不可用时回退到 likelist 顺序
-            if orderedIds.isEmpty {
-                orderedIds = allIds
-                usingFallbackOrder = true
-            } else {
-                usingFallbackOrder = false
+            for id in allIds {
+                if seen.insert(id).inserted { orderedIds.append(id) }
             }
+            usingFallbackOrder = detailIds.isEmpty
 
             let fetched = try await api.songDetails(ids: orderedIds, cookie: cookie)
             let byId = Dictionary(fetched.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
