@@ -39,4 +39,13 @@ final class BuiltinAPIService {
         lastError = nil
         return true
     }
+
+    /// 前台恢复时预热连接
+    ///
+    /// 设备长时间休眠后，URLSession 复用池里的连接可能已经失效，
+    /// 这里先用一个轻量请求把连接建好，避免用户点播放时才遇到首个请求失败。
+    func warmUp() async {
+        let base = baseURL ?? AppSettings.baseURL
+        _ = try? await NeteaseAPI(baseURL: base).getData("/login/status")
+    }
 }

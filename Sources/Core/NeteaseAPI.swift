@@ -37,6 +37,56 @@ struct NeteaseAPI {
         self.baseURL = baseURL
     }
 
+    /// 共享会话：不使用磁盘缓存，避免长连接在设备休眠后滞留
+    private static let session: URLSession = {
+        let config = URLSessionConfiguration.ephemeral
+        config.timeoutIntervalForRequest = 15
+        config.timeoutIntervalForResource = 30
+        config.waitsForConnectivity = false
+        config.httpShouldSetCookies = false
+        config.requestCachePolicy = .reloadIgnoringLocalCacheData
+        return URLSession(configuration: config)
+    }()
+
+    /// 发送请求；设备休眠唤醒后首个请求容易命中已失效的连接或遇到服务端 5xx，自动重试
+    private static func send(_ request: URLRequest, retries: Int = 2) async throws -> (Data, URLResponse) {
+        var attempt = 0
+        while true {
+            do {
+                let (data, response) = try await session.data(for: request)
+                if let http = response as? HTTPURLResponse,
+                   [500, 502, 503, 504].contains(http.statusCode),
+                   attempt < retries {
+                    attempt += 1
+                    try? await Task.sleep(nanoseconds: UInt64(attempt) * 600_000_000)
+                    continue
+                }
+                return (data, response)
+            } catch {
+                guard attempt < retries, isTransient(error) else { throw error }
+                attempt += 1
+                try? await Task.sleep(nanoseconds: UInt64(attempt) * 600_000_000)
+            }
+        }
+    }
+
+    /// 休眠唤醒、切换网络时常见的瞬时错误，值得立即重试
+    private static func isTransient(_ error: Error) -> Bool {
+        let ns = error as NSError
+        guard ns.domain == NSURLErrorDomain else { return false }
+        switch ns.code {
+        case NSURLErrorNetworkConnectionLost,
+             NSURLErrorCannotConnectToHost,
+             NSURLErrorCannotFindHost,
+             NSURLErrorDNSLookupFailed,
+             NSURLErrorTimedOut,
+             NSURLErrorNotConnectedToInternet:
+            return true
+        default:
+            return false
+        }
+    }
+
     /// GET 请求；`cookie` 非空时写入 Cookie 头（形如 `MUSIC_U=xxx`）
     func get<T: Decodable>(
         _ path: String,
@@ -77,7 +127,7 @@ struct NeteaseAPI {
             request.setValue(cookie, forHTTPHeaderField: "Cookie")
         }
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await Self.send(request)
         if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
             throw Self.serverError(from: data, status: http.statusCode)
         }
@@ -106,7 +156,7 @@ struct NeteaseAPI {
             request.setValue(cookie, forHTTPHeaderField: "Cookie")
         }
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await Self.send(request)
         if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
             throw Self.serverError(from: data, status: http.statusCode)
         }
@@ -158,7 +208,7 @@ struct NeteaseAPI {
             request.setValue(cookie, forHTTPHeaderField: "Cookie")
         }
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await Self.send(request)
         if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
             throw Self.serverError(from: data, status: http.statusCode)
         }
@@ -279,7 +329,7 @@ struct NeteaseAPI {
             request.setValue(cookie, forHTTPHeaderField: "Cookie")
         }
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await Self.send(request)
         if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
             throw Self.serverError(from: data, status: http.statusCode)
         }
