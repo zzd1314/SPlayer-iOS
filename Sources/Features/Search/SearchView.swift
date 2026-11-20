@@ -15,8 +15,9 @@ private enum SearchCategory: String, CaseIterable, Identifiable {
 struct SearchView: View {
     @EnvironmentObject private var auth: AuthStore
     @EnvironmentObject private var player: PlayerStore
+    @EnvironmentObject private var router: ShellRouter
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
-    @State private var query = ""
     @State private var category: SearchCategory = .songs
     @State private var songs: [Song] = []
     @State private var artists: [ArtistSummary] = []
@@ -26,50 +27,41 @@ struct SearchView: View {
     @State private var isSearching = false
     @State private var errorText: String?
     @State private var lastQuery: String?
-    @State private var suggestions: [String] = []
     @State private var hotItems: [HotSearchResponse.Item] = []
     @State private var history: [String] = AppSettings.searchHistory
     @State private var isLoadingHot = false
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: router.binding(for: .search)) {
             VStack(spacing: 0) {
-                Picker("搜索分类", selection: $category) {
-                    ForEach(SearchCategory.allCases) { item in
-                        Text(item.rawValue).tag(item)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .padding(.horizontal, 16)
-                .padding(.bottom, 8)
+                header
 
                 content
             }
-            .navigationTitle("搜索")
-            .searchable(text: $query, prompt: "歌曲 / 歌手 / 专辑 / 歌单 / MV")
-            .searchSuggestions {
-                ForEach(suggestions, id: \.self) { keyword in
-                    Label(keyword, systemImage: "magnifyingglass")
-                        .searchCompletion(keyword)
-                }
-            }
-            .onSubmit(of: .search) {
-                Task { await search() }
-            }
-            .task(id: query) {
-                await updateSuggestions()
-            }
+            .toolbar(.hidden, for: .navigationBar)
             .task {
+                // 从顶栏发起搜索时本页可能刚被挂载，onChange 不会触发初始值
+                let keyword = router.submittedQuery
+                if !keyword.isEmpty, keyword != lastQuery {
+                    await search(keyword: keyword)
+                }
                 if hotItems.isEmpty {
                     await loadHot()
                 }
             }
             .onChange(of: category) { _, _ in
                 guard let lastQuery, !lastQuery.isEmpty else { return }
-                if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    query = lastQuery
+                Task { await search(keyword: lastQuery) }
+            }
+            .onChange(of: router.searchToken) { _, _ in
+                let keyword = router.submittedQuery
+                guard !keyword.isEmpty else { return }
+                Task { await search(keyword: keyword) }
+            }
+            .onChange(of: router.searchText) { _, newValue in
+                if newValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    resetResults()
                 }
-                Task { await search() }
             }
             .navigationDestination(for: Playlist.self) { playlist in
                 PlaylistDetailView(playlist: playlist)
@@ -80,18 +72,24 @@ struct SearchView: View {
             .navigationDestination(for: AlbumSummary.self) { album in
                 AlbumDetailView(album: album)
             }
-            .toolbar {
-                if category == .songs, !songs.isEmpty {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button {
-                            Task { await player.play(songs, startAt: 0) }
-                        } label: {
-                            Label("播放全部", systemImage: "play.fill")
-                        }
-                    }
+        }
+    }
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("搜索")
+                .font(.system(size: horizontalSizeClass == .regular ? 28 : 24, weight: .bold))
+
+            Picker("搜索分类", selection: $category) {
+                ForEach(SearchCategory.allCases) { item in
+                    Text(item.rawValue).tag(item)
                 }
             }
+            .pickerStyle(.segmented)
         }
+        .padding(.horizontal, horizontalSizeClass == .regular ? 28 : 16)
+        .padding(.top, 12)
+        .padding(.bottom, 8)
     }
 
     // MARK: - 内容
@@ -109,10 +107,11 @@ struct SearchView: View {
                     Text(errorText)
                 } actions: {
                     Button("重试") {
-                        Task { await search() }
+                        guard let lastQuery else { return }
+                        Task { await search(keyword: lastQuery) }
                     }
                 }
-            } else if let lastQuery, !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            } else if let lastQuery, !router.searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 ContentUnavailableView.search(text: lastQuery)
             } else if !history.isEmpty || !hotItems.isEmpty {
                 discovery
@@ -224,7 +223,18 @@ struct SearchView: View {
                             }
                     }
                 } header: {
-                    Text("找到 \(songs.count) 首歌曲")
+                    HStack {
+                        Text("找到 \(songs.count) 首歌曲")
+                        Spacer()
+                        Button {
+                            Task { await player.play(songs, startAt: 0) }
+                        } label: {
+                            Label("播放全部", systemImage: "play.fill")
+                                .font(.caption.weight(.semibold))
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(Color.splayerAccent)
+                    }
                 }
             }
             .listStyle(.plain)
@@ -317,25 +327,18 @@ struct SearchView: View {
     }
 
     private func applySuggestion(_ keyword: String) {
-        query = keyword
-        Task { await search() }
+        router.searchText = keyword
+        router.submitSearch()
     }
 
-    /// 输入防抖后请求搜索建议
-    private func updateSuggestions() async {
-        let keyword = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !keyword.isEmpty, keyword != lastQuery else {
-            suggestions = []
-            return
-        }
-
-        try? await Task.sleep(nanoseconds: 300_000_000)
-        guard !Task.isCancelled else { return }
-
-        suggestions = (try? await NeteaseAPI().searchSuggest(
-            keywords: keyword,
-            cookie: auth.cookie
-        )) ?? []
+    private func resetResults() {
+        lastQuery = nil
+        errorText = nil
+        songs = []
+        artists = []
+        albums = []
+        playlists = []
+        mvs = []
     }
 
     private func loadHot() async {
@@ -346,8 +349,8 @@ struct SearchView: View {
         hotItems = (try? await NeteaseAPI().hotSearches(cookie: auth.cookie)) ?? []
     }
 
-    private func search() async {
-        let keyword = query.trimmingCharacters(in: .whitespacesAndNewlines)
+    private func search(keyword rawKeyword: String) async {
+        let keyword = rawKeyword.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !keyword.isEmpty, !isSearching else { return }
 
         AppSettings.addSearchHistory(keyword)

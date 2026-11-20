@@ -40,6 +40,7 @@ SPlayer-Next（[SPlayer-Dev/SPlayer-Next](https://github.com/SPlayer-Dev/SPlayer
 - [x] M29 下一首播放、云盘歌曲删除
 - [x] M30 扫码登录稳定性：过期自动刷新、断网续轮询、本地生成二维码
 - [x] M31 iPad 宽屏播放器（封面背景 + 右侧歌词分栏）、悬浮胶囊迷你播放条
+- [x] M32 桌面版式改版：左侧图标栏 + 顶部导航栏 + 底部整条播放栏、发现页、双栏设置弹窗
 
 ## 平台差异（iOS 限制）
 

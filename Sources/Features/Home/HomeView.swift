@@ -4,6 +4,8 @@ import SwiftUI
 struct HomeView: View {
     @EnvironmentObject private var auth: AuthStore
     @EnvironmentObject private var player: PlayerStore
+    @EnvironmentObject private var router: ShellRouter
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     @State private var dailySongs: [Song] = []
     @State private var playlists: [Playlist] = []
@@ -15,10 +17,14 @@ struct HomeView: View {
     @State private var errorText: String?
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: router.binding(for: .home)) {
             ScrollView {
-                VStack(alignment: .leading, spacing: 26) {
+                VStack(alignment: .leading, spacing: 24) {
                     greeting
+                    statsRow
+                    if !player.recentSongs.isEmpty {
+                        recentSection
+                    }
                     fmEntry
                     discoverSection
 
@@ -32,11 +38,11 @@ struct HomeView: View {
                         toplistSection
                     }
                 }
-                .padding(.horizontal, 16)
-                .padding(.top, 8)
-                .padding(.bottom, 24)
+                .padding(.horizontal, horizontalSizeClass == .regular ? 28 : 16)
+                .padding(.top, 16)
+                .padding(.bottom, 28)
             }
-            .navigationTitle("首页")
+            .toolbar(.hidden, for: .navigationBar)
             .navigationDestination(for: Playlist.self) { playlist in
                 PlaylistDetailView(playlist: playlist)
             }
@@ -70,13 +76,68 @@ struct HomeView: View {
     // MARK: - 顶部问候
 
     private var greeting: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 5) {
             Text("\(timeGreeting)，\(auth.profile?.nickname ?? "音乐爱好者")")
-                .font(.title2.weight(.bold))
+                .font(.system(size: horizontalSizeClass == .regular ? 32 : 26, weight: .bold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
             Text("今天想听点什么？")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
         }
+    }
+
+    // MARK: - 数据概览
+
+    private var statsRow: some View {
+        HStack(spacing: 12) {
+            statCard(
+                icon: "clock.arrow.circlepath",
+                tint: .blue,
+                value: "\(player.recentSongs.count)",
+                title: "最近播放"
+            )
+            statCard(
+                icon: "heart.fill",
+                tint: .pink,
+                value: "\(player.likedSongIds.count)",
+                title: "我喜欢的音乐"
+            )
+            if horizontalSizeClass == .regular {
+                statCard(
+                    icon: "music.note.list",
+                    tint: .splayerAccent,
+                    value: "\(playlists.count)",
+                    title: "推荐歌单"
+                )
+            }
+        }
+    }
+
+    private func statCard(icon: String, tint: Color, value: String, title: String) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: icon)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(tint)
+                .frame(width: 32, height: 32)
+                .background(tint.opacity(0.14), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(value)
+                    .font(.system(size: 19, weight: .semibold, design: .rounded).monospacedDigit())
+                    .lineLimit(1)
+                Text(title)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 11)
+        .padding(.vertical, 9)
+        .frame(maxWidth: .infinity)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
     private var timeGreeting: String {
@@ -193,6 +254,40 @@ struct HomeView: View {
         .buttonStyle(.plain)
     }
 
+    // MARK: - 反复聆听
+
+    private var recentSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("反复聆听", systemImage: "clock.arrow.circlepath")
+                .font(.title3.weight(.semibold))
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(alignment: .top, spacing: 12) {
+                    ForEach(Array(player.recentSongs.prefix(10))) { song in
+                        Button {
+                            play(song, in: player.recentSongs)
+                        } label: {
+                            VStack(alignment: .leading, spacing: 6) {
+                                CoverImage(urlString: song.albumPicUrl, size: 112, cornerRadius: 10)
+                                Text(song.name)
+                                    .font(.caption.weight(.medium))
+                                    .lineLimit(1)
+                                Text(song.artistText)
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            }
+                            .frame(width: 112, alignment: .leading)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, 2)
+                .padding(.vertical, 2)
+            }
+        }
+    }
+
     // MARK: - 每日推荐
 
     private var dailySection: some View {
@@ -244,7 +339,7 @@ struct HomeView: View {
     private var playlistSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Label("推荐歌单", systemImage: "square.stack.fill")
+                Label("专属歌单", systemImage: "square.stack.fill")
                     .font(.title3.weight(.semibold))
 
                 Spacer()

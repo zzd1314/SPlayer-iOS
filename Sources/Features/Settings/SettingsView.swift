@@ -1,109 +1,165 @@
 import PhotosUI
 import SwiftUI
 
-/// 设置（分组顺序与 SPlayer-Next 桌面版一致）
+// MARK: - 设置分类
+
+/// 设置分类（顺序对齐桌面版设置弹窗左侧菜单）
+private enum SettingsCategory: String, CaseIterable, Identifiable, Hashable {
+    case general
+    case playback
+    case lyrics
+    case appearance
+    case service
+    case servers
+    case cache
+    case download
+    case about
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .general: return "常规设置"
+        case .playback: return "播放设置"
+        case .lyrics: return "歌词设置"
+        case .appearance: return "外观设置"
+        case .service: return "网络与服务"
+        case .servers: return "媒体服务器"
+        case .cache: return "本地与缓存"
+        case .download: return "下载管理"
+        case .about: return "关于软件"
+        }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .general: return "自动播放、记忆播放进度、播放栏歌词"
+        case .playback: return "音质、预载、屏幕常亮、时间格式"
+        case .lyrics: return "翻译、字号、对齐、颜色、锁屏歌词"
+        case .appearance: return "主题模式、主题色、背景风格"
+        case .service: return "平台登录、API 服务器"
+        case .servers: return "Subsonic / Navidrome / Jellyfin / Emby"
+        case .cache: return "歌曲缓存、缓存上限、清理"
+        case .download: return "已下载歌曲与空间占用"
+        case .about: return "版本信息、重置设置"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .general: return "gearshape.fill"
+        case .playback: return "play.circle.fill"
+        case .lyrics: return "text.quote"
+        case .appearance: return "paintbrush.fill"
+        case .service: return "network"
+        case .servers: return "externaldrive.connected.to.line.below"
+        case .cache: return "internaldrive.fill"
+        case .download: return "arrow.down.circle.fill"
+        case .about: return "info.circle.fill"
+        }
+    }
+
+    var color: Color {
+        switch self {
+        case .general: return .gray
+        case .playback: return .splayerAccent
+        case .lyrics: return .pink
+        case .appearance: return .purple
+        case .service: return .blue
+        case .servers: return .indigo
+        case .cache: return .green
+        case .download: return .teal
+        case .about: return .gray
+        }
+    }
+}
+
+// MARK: - 设置弹窗
+
+/// 桌面版式设置弹窗：宽屏双栏（左侧分类 / 右侧内容），窄屏单栏导航
 struct SettingsView: View {
+    let onClose: () -> Void
+
+    @State private var selection: SettingsCategory = .general
+
     var body: some View {
+        GeometryReader { geo in
+            Group {
+                if geo.size.width >= 720 {
+                    wideLayout
+                } else {
+                    compactLayout
+                }
+            }
+            .background(.regularMaterial)
+            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
+            }
+        }
+    }
+
+    // MARK: 宽屏双栏
+
+    private var wideLayout: some View {
+        HStack(spacing: 0) {
+            SettingsMenu(selection: $selection, onClose: onClose)
+                .frame(width: 238)
+
+            Rectangle()
+                .fill(Color.primary.opacity(0.08))
+                .frame(width: 0.5)
+
+            VStack(alignment: .leading, spacing: 0) {
+                // 详情页内部可能还有跳转（如媒体服务器编辑），需要保留导航上下文
+                NavigationStack {
+                    VStack(alignment: .leading, spacing: 0) {
+                        detailHeader
+                        detailView(selection)
+                            .scrollContentBackground(.hidden)
+                    }
+                    .toolbar(.hidden, for: .navigationBar)
+                }
+                .id(selection)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    private var detailHeader: some View {
+        HStack(spacing: 12) {
+            Image(systemName: selection.icon)
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: 38, height: 38)
+                .background(selection.color, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(selection.title)
+                    .font(.title3.weight(.semibold))
+                Text(selection.subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 18)
+        .padding(.bottom, 6)
+    }
+
+    // MARK: 窄屏单栏
+
+    private var compactLayout: some View {
         NavigationStack {
             List {
                 Section {
-                    NavigationLink {
-                        GeneralSettingsView()
-                    } label: {
-                        SettingsGroupRow(
-                            icon: "gearshape.fill",
-                            color: .gray,
-                            title: "常规设置",
-                            subtitle: "自动播放、记忆播放进度、播放栏歌词"
-                        )
-                    }
-
-                    NavigationLink {
-                        PlayerSettingsView()
-                    } label: {
-                        SettingsGroupRow(
-                            icon: "play.circle.fill",
-                            color: .splayerAccent,
-                            title: "播放设置",
-                            subtitle: "音质、预载、屏幕常亮、时间格式"
-                        )
-                    }
-
-                    NavigationLink {
-                        LyricSettingsView()
-                    } label: {
-                        SettingsGroupRow(
-                            icon: "text.quote",
-                            color: .pink,
-                            title: "歌词设置",
-                            subtitle: "翻译、字号、对齐、颜色、锁屏歌词"
-                        )
-                    }
-
-                    NavigationLink {
-                        AppearanceSettingsView()
-                    } label: {
-                        SettingsGroupRow(
-                            icon: "paintbrush.fill",
-                            color: .purple,
-                            title: "外观设置",
-                            subtitle: "主题模式、主题色、背景风格"
-                        )
-                    }
-
-                    NavigationLink {
-                        ServiceSettingsView()
-                    } label: {
-                        SettingsGroupRow(
-                            icon: "network",
-                            color: .blue,
-                            title: "网络与服务",
-                            subtitle: "平台登录、API 服务器"
-                        )
-                    }
-
-                    NavigationLink {
-                        MediaServerListView()
-                    } label: {
-                        SettingsGroupRow(
-                            icon: "externaldrive.connected.to.line.below",
-                            color: .indigo,
-                            title: "媒体服务器",
-                            subtitle: "Subsonic / Navidrome / Jellyfin / Emby"
-                        )
-                    }
-
-                    NavigationLink {
-                        CacheSettingsView()
-                    } label: {
-                        SettingsGroupRow(
-                            icon: "internaldrive.fill",
-                            color: .green,
-                            title: "本地与缓存",
-                            subtitle: "歌曲缓存、缓存上限、清理"
-                        )
-                    }
-
-                    NavigationLink {
-                        DownloadManageView()
-                    } label: {
-                        SettingsGroupRow(
-                            icon: "arrow.down.circle.fill",
-                            color: .teal,
-                            title: "下载管理",
-                            subtitle: "已下载歌曲与空间占用"
-                        )
-                    }
-
-                    NavigationLink {
-                        AboutSettingsView()
-                    } label: {
-                        SettingsGroupRow(
-                            icon: "info.circle.fill",
-                            color: .gray,
-                            title: "关于软件",
-                            subtitle: "版本信息、重置设置"
-                        )
+                    ForEach(SettingsCategory.allCases) { category in
+                        NavigationLink(value: category) {
+                            SettingsMenuRow(category: category, showsSubtitle: true)
+                        }
                     }
                 } header: {
                     Text("调整您的专属配置")
@@ -114,33 +170,156 @@ struct SettingsView: View {
             }
             .adaptiveListBackground()
             .navigationTitle("设置")
+            .navigationBarTitleDisplayMode(.inline)
+            .navigationDestination(for: SettingsCategory.self) { category in
+                detailView(category)
+            }
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("完成", action: onClose)
+                }
+            }
+        }
+    }
+
+    // MARK: 内容
+
+    @ViewBuilder
+    private func detailView(_ category: SettingsCategory) -> some View {
+        switch category {
+        case .general: GeneralSettingsView()
+        case .playback: PlayerSettingsView()
+        case .lyrics: LyricSettingsView()
+        case .appearance: AppearanceSettingsView()
+        case .service: ServiceSettingsView()
+        case .servers: MediaServerListView()
+        case .cache: CacheSettingsView()
+        case .download: DownloadManageView()
+        case .about: AboutSettingsView()
         }
     }
 }
 
-private struct SettingsGroupRow: View {
-    let icon: String
-    let color: Color
-    let title: String
-    let subtitle: String
+// MARK: - 左侧分类菜单
+
+private struct SettingsMenu: View {
+    @Binding var selection: SettingsCategory
+    let onClose: () -> Void
+
+    private var versionText: String {
+        let info = Bundle.main.infoDictionary
+        let short = info?["CFBundleShortVersionString"] as? String ?? "1.0"
+        return "v\(short)"
+    }
 
     var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: icon)
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(.white)
-                .frame(width: 30, height: 30)
-                .background(color, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("设置")
+                        .font(.title2.weight(.bold))
+                    Text("调整您的专属配置")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer(minLength: 8)
+
+                Button(action: onClose) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 28, height: 28)
+                        .background(Color.primary.opacity(0.06), in: Circle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("关闭设置")
+            }
+            .padding(.horizontal, 18)
+            .padding(.top, 18)
+            .padding(.bottom, 14)
+
+            ScrollView {
+                VStack(spacing: 2) {
+                    ForEach(SettingsCategory.allCases) { category in
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.12)) {
+                                selection = category
+                            }
+                        } label: {
+                            SettingsMenuRow(category: category, isSelected: selection == category)
+                                .padding(.horizontal, 10)
+                                .frame(height: 34)
+                                .background(
+                                    selection == category ? Color.primary.opacity(0.06) : Color.clear,
+                                    in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                )
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, 8)
+            }
+            .scrollIndicators(.hidden)
+
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(Color.green)
+                    .frame(width: 6, height: 6)
+                Text("SPlayer-Next iOS")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 0)
+                Text(versionText)
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.horizontal, 18)
+            .padding(.vertical, 12)
+        }
+    }
+}
+
+private struct SettingsMenuRow: View {
+    let category: SettingsCategory
+    var isSelected = false
+    var showsSubtitle = false
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: category.icon)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(isSelected ? Color.splayerAccent : category.color)
+                .frame(width: 26, height: 26)
+                .background(
+                    (isSelected ? Color.splayerAccent : category.color).opacity(0.12),
+                    in: RoundedRectangle(cornerRadius: 7, style: .continuous)
+                )
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .foregroundStyle(.primary)
-                Text(subtitle)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                Text(category.title)
+                    .font(.subheadline.weight(isSelected ? .semibold : .regular))
+                    .foregroundStyle(isSelected ? Color.splayerAccent : Color.primary)
+                    .lineLimit(1)
+
+                if showsSubtitle {
+                    Text(category.subtitle)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
+
+            Spacer(minLength: 0)
+
+            if isSelected {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.tertiary)
             }
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, showsSubtitle ? 2 : 0)
     }
 }
 

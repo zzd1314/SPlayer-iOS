@@ -4,6 +4,8 @@ import SwiftUI
 struct LibraryView: View {
     @EnvironmentObject private var auth: AuthStore
     @EnvironmentObject private var player: PlayerStore
+    @EnvironmentObject private var router: ShellRouter
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     @State private var playlists: [Playlist] = []
     @State private var isLoading = false
@@ -21,9 +23,11 @@ struct LibraryView: View {
     ]
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: router.binding(for: .library)) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
+                    pageHeader
+
                     profileHeader
 
                     quickLinks
@@ -59,21 +63,10 @@ struct LibraryView: View {
                         }
                     }
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
+                .padding(.horizontal, horizontalSizeClass == .regular ? 28 : 16)
+                .padding(.vertical, 16)
             }
-            .navigationTitle("资料库")
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        newPlaylistName = ""
-                        showCreate = true
-                    } label: {
-                        Label("新建歌单", systemImage: "plus")
-                    }
-                    .disabled(!auth.isLoggedIn || isMutating)
-                }
-            }
+            .toolbar(.hidden, for: .navigationBar)
             .navigationDestination(for: Playlist.self) { playlist in
                 PlaylistDetailView(playlist: playlist)
             }
@@ -148,6 +141,34 @@ struct LibraryView: View {
             } message: {
                 Text(actionError ?? "")
             }
+        }
+    }
+
+    private var pageHeader: some View {
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("资料库")
+                    .font(.system(size: horizontalSizeClass == .regular ? 28 : 24, weight: .bold))
+                Text("歌单、收藏与本地音乐")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer(minLength: 0)
+
+            Button {
+                newPlaylistName = ""
+                showCreate = true
+            } label: {
+                Label("新建歌单", systemImage: "plus")
+                    .font(.caption.weight(.semibold))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Color.splayerAccent.opacity(0.14), in: Capsule())
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(Color.splayerAccent)
+            .disabled(!auth.isLoggedIn || isMutating)
         }
     }
 

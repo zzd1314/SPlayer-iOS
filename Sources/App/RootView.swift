@@ -36,7 +36,7 @@ struct RootView: View {
             AppBackground()
             Group {
                 if auth.isLoggedIn {
-                    MainTabView()
+                    MainShellView()
                 } else {
                     LoginView()
                 }

@@ -704,7 +704,7 @@ private struct PlayerBackground: View {
 
 // MARK: - 播放选项（倍速 / 睡眠定时）
 
-private struct PlayerOptionsSheet: View {
+struct PlayerOptionsSheet: View {
     @EnvironmentObject private var player: PlayerStore
     @Environment(\.dismiss) private var dismiss
 
