@@ -188,7 +188,7 @@ struct LibraryView: View {
             Spacer(minLength: 0)
         }
         .padding(14)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .appCardBackground(cornerRadius: 18)
     }
 
     private var quickLinks: some View {
@@ -303,7 +303,7 @@ struct LibraryView: View {
             }
             .padding(10)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .appCardBackground(cornerRadius: 14)
         }
         .buttonStyle(.plain)
     }

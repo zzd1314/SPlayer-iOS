@@ -71,12 +71,14 @@ final class UpdateChecker: ObservableObject {
     @Published private(set) var latestRelease: AppRelease?
     /// 手动检查发现新版本时用于弹出更新说明
     @Published var presentedRelease: AppRelease?
-    /// 手动检查的结果提示
+    /// 检查结果提示（自动检查失败时也会设置）
     @Published var alertMessage: String?
 
     private let owner = "zzd1314"
     private let repo = "SPlayer-iOS"
     private let lastCheckKey = "lastUpdateCheckDate"
+    /// 本次运行是否已完成启动检查
+    private var didCheckOnLaunch = false
 
     var hasUpdate: Bool {
         if case .updateAvailable = state {
@@ -91,15 +93,19 @@ final class UpdateChecker: ObservableObject {
 
     // MARK: 对外入口
 
-    /// 启动后按开关与频率自动检查
+    /// 启动后立即检查；同一次运行内回到前台时按 24 小时节流
     func autoCheckIfNeeded() async {
         let defaults = UserDefaults.standard
         let enabled = defaults.object(forKey: "autoCheckUpdate") as? Bool ?? true
         guard enabled else { return }
 
-        if let last = defaults.object(forKey: lastCheckKey) as? Date,
-           Date().timeIntervalSince(last) < 24 * 60 * 60 {
-            return
+        if didCheckOnLaunch {
+            if let last = defaults.object(forKey: lastCheckKey) as? Date,
+               Date().timeIntervalSince(last) < 24 * 60 * 60 {
+                return
+            }
+        } else {
+            didCheckOnLaunch = true
         }
 
         await check(manual: false)
@@ -110,10 +116,12 @@ final class UpdateChecker: ObservableObject {
         guard state != .checking else { return }
         state = .checking
         latestRelease = nil
+        alertMessage = nil
+        // 记录检查时间（无论成功失败），避免同一次运行内重复请求
+        UserDefaults.standard.set(Date(), forKey: lastCheckKey)
 
         do {
             let release = try await fetchLatestRelease()
-            UserDefaults.standard.set(Date(), forKey: lastCheckKey)
 
             guard let release, Self.isNewer(release.version, than: currentVersion) else {
                 state = .upToDate
@@ -130,9 +138,8 @@ final class UpdateChecker: ObservableObject {
             }
         } catch {
             state = .failed(error.localizedDescription)
-            if manual {
-                alertMessage = "检查更新失败：\(error.localizedDescription)"
-            }
+            // 自动检查失败也要给出提示
+            alertMessage = "检查更新失败：\(error.localizedDescription)"
         }
     }
 

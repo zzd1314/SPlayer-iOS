@@ -8,6 +8,7 @@ struct PlayerBar: View {
 
     @AppStorage("showLyricInBar") private var showLyricInBar = true
     @AppStorage("followCoverColor") private var followCoverColor = true
+    @AppStorage("uiStyle") private var uiStyle = UIStyleMode.classic.rawValue
 
     @State private var showFullPlayer = false
     @State private var activeSheet: PlayerBarSheet?
@@ -23,6 +24,8 @@ struct PlayerBar: View {
         followCoverColor ? (player.coverAccent ?? .splayerAccent) : .splayerAccent
     }
 
+    private var isGlass: Bool { uiStyle == UIStyleMode.glass.rawValue }
+
     var body: some View {
         Group {
             if let song = player.currentSong {
@@ -34,14 +37,28 @@ struct PlayerBar: View {
             }
         }
         .background {
-            Rectangle()
-                .fill(.regularMaterial)
-                .ignoresSafeArea(edges: .bottom)
+            if isGlass {
+                LiquidGlassSurface(shape: Rectangle(), borderStrength: 0)
+                    .ignoresSafeArea(edges: .bottom)
+            } else {
+                Rectangle()
+                    .fill(.regularMaterial)
+                    .ignoresSafeArea(edges: .bottom)
+            }
         }
         .overlay(alignment: .top) {
-            Rectangle()
-                .fill(Color.primary.opacity(0.08))
+            if isGlass {
+                LinearGradient(
+                    colors: [Color.white.opacity(0.65), Color.white.opacity(0.1)],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
                 .frame(height: 0.5)
+            } else {
+                Rectangle()
+                    .fill(Color.primary.opacity(0.08))
+                    .frame(height: 0.5)
+            }
         }
         .fullScreenCover(isPresented: $showFullPlayer) {
             FullPlayerView()

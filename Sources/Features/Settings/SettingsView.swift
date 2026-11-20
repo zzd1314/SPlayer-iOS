@@ -39,7 +39,7 @@ private enum SettingsCategory: String, CaseIterable, Identifiable, Hashable {
         case .general: return "自动播放、记忆播放进度、播放栏歌词"
         case .playback: return "音质、预载、屏幕常亮、时间格式"
         case .lyrics: return "翻译、字号、对齐、颜色、锁屏歌词"
-        case .appearance: return "主题模式、主题色、背景风格"
+        case .appearance: return "界面风格、主题模式、主题色、背景"
         case .service: return "平台登录、API 服务器"
         case .servers: return "Subsonic / Navidrome / Jellyfin / Emby"
         case .cache: return "歌曲缓存、缓存上限、清理"
@@ -87,6 +87,9 @@ struct SettingsView: View {
     let onClose: () -> Void
 
     @State private var selection: SettingsCategory = .general
+    @AppStorage("uiStyle") private var uiStyle = UIStyleMode.classic.rawValue
+
+    private var isGlass: Bool { uiStyle == UIStyleMode.glass.rawValue }
 
     var body: some View {
         GeometryReader { geo in
@@ -97,11 +100,32 @@ struct SettingsView: View {
                     compactLayout
                 }
             }
-            .background(.regularMaterial)
+            .background {
+                if isGlass {
+                    LiquidGlassSurface(
+                        shape: RoundedRectangle(cornerRadius: 22, style: .continuous),
+                        borderStrength: 0
+                    )
+                } else {
+                    Rectangle().fill(.regularMaterial)
+                }
+            }
             .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
             .overlay {
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
+                if isGlass {
+                    RoundedRectangle(cornerRadius: 22, style: .continuous)
+                        .strokeBorder(
+                            LinearGradient(
+                                colors: [Color.white.opacity(0.9), Color.white.opacity(0.2)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ),
+                            lineWidth: 1
+                        )
+                } else {
+                    RoundedRectangle(cornerRadius: 22, style: .continuous)
+                        .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
+                }
             }
         }
     }
@@ -516,6 +540,7 @@ private struct AppearanceSettingsView: View {
     @AppStorage("themeMode") private var themeMode = "system"
     @AppStorage("themeSource") private var themeSource = "default"
     @AppStorage("customThemeColor") private var customThemeColor = "FE7971"
+    @AppStorage("uiStyle") private var uiStyle = UIStyleMode.classic.rawValue
     @AppStorage("appearanceStyle") private var appearanceStyle = "solid"
     @AppStorage("backgroundBlur") private var backgroundBlur = 20.0
     @AppStorage("backgroundDim") private var backgroundDim = 0.32
@@ -539,6 +564,19 @@ private struct AppearanceSettingsView: View {
 
     var body: some View {
         Form {
+            Section {
+                Picker("界面风格", selection: $uiStyle) {
+                    ForEach(UIStyleMode.allCases) { mode in
+                        Text(mode.title).tag(mode.rawValue)
+                    }
+                }
+                .pickerStyle(.segmented)
+            } header: {
+                Text("界面风格")
+            } footer: {
+                Text("液态玻璃使用半透明磨砂、渐变高光与彩色光晕呈现玻璃质感；经典风格为原有平面材质。也可点顶栏的水滴按钮快速切换。")
+            }
+
             Section {
                 Picker("主题模式", selection: $themeMode) {
                     Text("跟随系统").tag("system")
@@ -916,7 +954,7 @@ private struct AboutSettingsView: View {
             } header: {
                 Text("更新")
             } footer: {
-                Text("选择接收更新的通道，切换通道不会自动降级；自动检查会在启动后及定时在后台检查新版本。")
+                Text("选择接收更新的通道；开启后每次打开 App 都会自动检查新版本，检查失败会给出提示。")
             }
 
             Section("特别致谢") {
@@ -1016,11 +1054,6 @@ private struct AboutSettingsView: View {
         .sheet(item: $updater.presentedRelease) { release in
             UpdateReleaseView(release: release)
         }
-        .alert("检查更新", isPresented: updateAlertBinding) {
-            Button("好", role: .cancel) {}
-        } message: {
-            Text(updater.alertMessage ?? "")
-        }
         .confirmationDialog("重置全部设置？", isPresented: $showResetConfirm, titleVisibility: .visible) {
             Button("重置", role: .destructive) {
                 AppSettings.resetAll()
@@ -1064,14 +1097,6 @@ private struct AboutSettingsView: View {
             copied = false
         }
     }
-
-    @MainActor
-    private var updateAlertBinding: Binding<Bool> {
-        Binding(
-            get: { updater.alertMessage != nil },
-            set: { if !$0 { updater.alertMessage = nil } }
-        )
-    }
 }
 
 // MARK: - 更新说明
@@ -1083,22 +1108,37 @@ private struct UpdateReleaseView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
 
-    private var noteLines: [String] {
+    /// Release 说明是 Markdown，这里按行解析为标题 / 列表 / 正文
+    private var noteLines: [NoteLine] {
         guard let body = release.body else { return [] }
         return body
             .components(separatedBy: .newlines)
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty && $0 != "---" && !$0.hasPrefix("```") }
-            .compactMap { line -> String? in
-                // Release 说明是 Markdown，弹窗里按纯文本展示
-                var text = line
-                while text.hasPrefix("#") { text.removeFirst() }
-                text = text.trimmingCharacters(in: .whitespaces)
-                if let prefix = ["- ", "* "].first(where: { text.hasPrefix($0) }) {
-                    text = "• " + String(text.dropFirst(prefix.count))
+            .compactMap { rawLine -> NoteLine? in
+                let line = rawLine.trimmingCharacters(in: .whitespaces)
+                guard !line.isEmpty, line != "---", !line.hasPrefix("```") else { return nil }
+
+                if line.hasPrefix("#") {
+                    let text = String(line.drop(while: { $0 == "#" }))
+                        .trimmingCharacters(in: .whitespaces)
+                    return text.isEmpty ? nil : NoteLine(kind: .heading, text: text)
                 }
-                return text.isEmpty ? nil : text
+                if let prefix = ["- ", "* "].first(where: { line.hasPrefix($0) }) {
+                    return NoteLine(kind: .bullet, text: String(line.dropFirst(prefix.count)))
+                }
+                return NoteLine(kind: .text, text: line)
             }
+    }
+
+    private struct NoteLine: Identifiable {
+        enum Kind {
+            case heading
+            case bullet
+            case text
+        }
+
+        let id = UUID()
+        let kind: Kind
+        let text: String
     }
 
     private var publishedText: String? {
@@ -1178,11 +1218,8 @@ private struct UpdateReleaseView: View {
                     .foregroundStyle(.secondary)
             } else {
                 VStack(alignment: .leading, spacing: 7) {
-                    ForEach(noteLines.indices, id: \.self) { index in
-                        Text(noteLines[index])
-                            .font(.subheadline)
-                            .foregroundStyle(.primary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                    ForEach(noteLines) { line in
+                        noteRow(line)
                     }
                 }
                 .padding(14)
@@ -1191,6 +1228,32 @@ private struct UpdateReleaseView: View {
                     in: RoundedRectangle(cornerRadius: 12, style: .continuous)
                 )
             }
+        }
+    }
+
+    @ViewBuilder
+    private func noteRow(_ line: NoteLine) -> some View {
+        switch line.kind {
+        case .heading:
+            Text(line.text)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.primary)
+                .padding(.top, 2)
+        case .bullet:
+            HStack(alignment: .top, spacing: 6) {
+                Text("•")
+                    .font(.subheadline)
+                    .foregroundStyle(Color.splayerAccent)
+                Text(line.text)
+                    .font(.subheadline)
+                    .foregroundStyle(.primary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        case .text:
+            Text(line.text)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 

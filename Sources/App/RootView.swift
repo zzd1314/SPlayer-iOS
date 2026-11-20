@@ -5,6 +5,7 @@ struct RootView: View {
     @Environment(\.scenePhase) private var scenePhase
     @StateObject private var auth = AuthStore()
     @StateObject private var player = PlayerStore()
+    @ObservedObject private var updater = UpdateChecker.shared
 
     @AppStorage("themeMode") private var themeMode = "system"
     @AppStorage("themeSource") private var themeSource = "default"
@@ -85,5 +86,19 @@ struct RootView: View {
                 break
             }
         }
+        .alert("检查更新", isPresented: updateAlertBinding) {
+            Button("好", role: .cancel) {}
+        } message: {
+            Text(updater.alertMessage ?? "")
+        }
+    }
+
+    /// 全局更新提示：启动检查失败或手动检查结果都能展示
+    @MainActor
+    private var updateAlertBinding: Binding<Bool> {
+        Binding(
+            get: { updater.alertMessage != nil },
+            set: { if !$0 { updater.alertMessage = nil } }
+        )
     }
 }

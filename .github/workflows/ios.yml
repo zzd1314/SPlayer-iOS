@@ -53,6 +53,7 @@ jobs:
             -sdk iphoneos \
             -configuration Release \
             -derivedDataPath build/DerivedData \
+            CURRENT_PROJECT_VERSION="$GITHUB_RUN_NUMBER" \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
@@ -139,29 +140,39 @@ jobs:
         run: |
           set -euo pipefail
           VERSION=$(sed -n 's/.*MARKETING_VERSION: *"\([0-9][0-9.]*\)".*/\1/p' project.yml | head -1)
-          BUILD=$(sed -n 's/.*CURRENT_PROJECT_VERSION: *"\([0-9]*\)".*/\1/p' project.yml | head -1)
+          BUILD="${GITHUB_RUN_NUMBER}"
           TAG="v${VERSION}"
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            # 同版本重复构建：保留已有更新条目，只刷新底部构建信息
-            gh release view "$TAG" --json body -q .body | grep -v '^构建时间：' > release-notes.md || true
+          # 上一个版本 tag（排除当前版本），用来生成本版本周期的完整变更
+          PREV=$(git tag --list 'v[0-9]*' --sort=-v:refname | grep -vx "$TAG" | head -1 || true)
+
+          # 本版本周期内的提交说明
+          if [ -n "${PREV}" ]; then
+            CHANGES=$(git log "${PREV}..HEAD" --no-merges --pretty=format:"- %s")
           else
-            PREV=$(git describe --tags --abbrev=0 --match 'v[0-9]*' 2>/dev/null || true)
-            {
-              echo "## ${TAG}（构建 ${BUILD}）"
-              echo ""
-              if [ -n "$PREV" ]; then
-                git log "${PREV}..HEAD" --no-merges --pretty=format:"- %s" || true
-                echo ""
-              fi
-            } > release-notes.md
-            if [ "$(grep -c '^- ' release-notes.md || true)" -eq 0 ]; then
-              echo "- $(git log -1 --pretty=format:'%s')" >> release-notes.md
-            fi
+            CHANGES=$(git log -n 20 --no-merges --pretty=format:"- %s")
           fi
+          # 没有新提交时兜底，避免更新说明为空
+          if [ -z "${CHANGES}" ]; then
+            CHANGES="- $(git log -1 --pretty=format:'%s')"
+          fi
+
           {
+            echo "## ${TAG}（构建 ${BUILD}）"
             echo ""
-            echo "构建时间：$(date -u '+%Y-%m-%d %H:%M UTC') · 提交 ${GITHUB_SHA:0:7}"
-          } >> release-notes.md
+            echo "### 更新内容"
+            printf '%s\n' "${CHANGES}"
+            echo ""
+            echo "### 构建信息"
+            echo "- 版本：${VERSION}（构建 ${BUILD}）"
+            echo "- 提交：${GITHUB_SHA:0:7}"
+            echo "- 时间：$(date -u '+%Y-%m-%d %H:%M UTC')"
+            if [ -n "${PREV}" ]; then
+              echo "- 对比：https://github.com/${GITHUB_REPOSITORY}/compare/${PREV}...${GITHUB_SHA}"
+            else
+              echo "- 提交记录：https://github.com/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}"
+            fi
+          } > release-notes.md
+
           cat release-notes.md
 
       - name: Publish GitHub Release
@@ -173,11 +184,12 @@ jobs:
           VERSION=$(sed -n 's/.*MARKETING_VERSION: *"\([0-9][0-9.]*\)".*/\1/p' project.yml | head -1)
           TAG="v${VERSION}"
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release edit "$TAG" --notes-file release-notes.md
+            gh release edit "$TAG" --notes-file release-notes.md --latest
           else
             gh release create "$TAG" \
               --title "SPlayer-Next iOS ${TAG}" \
               --notes-file release-notes.md \
               --latest
           fi
+          # 每次构建都覆盖上传最新 IPA
           gh release upload "$TAG" SPlayer-iOS-unsigned.ipa --clobber

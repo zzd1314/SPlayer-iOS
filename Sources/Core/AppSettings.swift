@@ -256,6 +256,12 @@ enum AppSettings {
         set { store.set(newValue, forKey: "customThemeColor") }
     }
 
+    /// classic / glass
+    static var uiStyle: String {
+        get { stringValue("uiStyle", "classic") }
+        set { store.set(newValue, forKey: "uiStyle") }
+    }
+
     /// solid / image
     static var appearanceStyle: String {
         get { stringValue("appearanceStyle", "solid") }
@@ -302,7 +308,7 @@ enum AppSettings {
         "searchPlayBehavior", "songListPlayBehavior", "searchHistory", "preloadNextTrack", "playbackRate", "keepScreenAwake",
         "timeFormat", "showTranslation", "showRomanization", "lyricOffset", "lyricFontSize", "lyricAlignment", "inactiveAlpha",
         "followCoverColor", "liveActivityEnabled", "themeMode", "themeSource", "customThemeColor",
-        "appearanceStyle", "backgroundBlur", "backgroundDim", "backgroundRevision",
+        "appearanceStyle", "uiStyle", "backgroundBlur", "backgroundDim", "backgroundRevision",
         "enableSongCache", "cacheLimitMB", "repeatMode", "shuffleEnabled", "playbackSnapshot",
         "updateChannel", "autoCheckUpdate", "fullPlayerCoverStyle"
     ]

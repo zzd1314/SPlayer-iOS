@@ -92,7 +92,7 @@ struct DiscoverView: View {
             }
             .padding(12)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .appCardBackground(cornerRadius: 16)
         }
         .buttonStyle(.plain)
     }

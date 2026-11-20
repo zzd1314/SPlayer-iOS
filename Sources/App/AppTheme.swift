@@ -87,12 +87,16 @@ struct AppBackground: View {
     @AppStorage("backgroundBlur") private var backgroundBlur = 20.0
     @AppStorage("backgroundDim") private var backgroundDim = 0.32
     @AppStorage("backgroundRevision") private var backgroundRevision = 0
+    @AppStorage("uiStyle") private var uiStyle = UIStyleMode.classic.rawValue
 
     var body: some View {
         let _ = backgroundRevision
         GeometryReader { geo in
             ZStack {
                 Color(uiColor: .systemGroupedBackground)
+                if uiStyle == UIStyleMode.glass.rawValue {
+                    LiquidGlassAmbientBackdrop()
+                }
                 if appearanceStyle == "image", let image = BackgroundImageStore.load() {
                     Image(uiImage: image)
                         .resizable()

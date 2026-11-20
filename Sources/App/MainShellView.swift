@@ -238,6 +238,9 @@ private struct ShellSidebar: View {
     @EnvironmentObject private var router: ShellRouter
 
     @ObservedObject private var updater = UpdateChecker.shared
+    @AppStorage("uiStyle") private var uiStyle = UIStyleMode.classic.rawValue
+
+    private var isGlass: Bool { uiStyle == UIStyleMode.glass.rawValue }
 
     var body: some View {
         VStack(spacing: 4) {
@@ -278,14 +281,29 @@ private struct ShellSidebar: View {
         }
         .frame(maxHeight: .infinity)
         .background {
-            Color.primary.opacity(0.045)
-                .ignoresSafeArea()
+            if isGlass {
+                LiquidGlassSurface(shape: Rectangle(), borderStrength: 0)
+                    .ignoresSafeArea()
+            } else {
+                Color.primary.opacity(0.045)
+                    .ignoresSafeArea()
+            }
         }
         .overlay(alignment: .trailing) {
-            Rectangle()
-                .fill(Color.primary.opacity(0.07))
+            if isGlass {
+                LinearGradient(
+                    colors: [Color.white.opacity(0.7), Color.white.opacity(0.12)],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
                 .frame(width: 0.5)
                 .ignoresSafeArea()
+            } else {
+                Rectangle()
+                    .fill(Color.primary.opacity(0.07))
+                    .frame(width: 0.5)
+                    .ignoresSafeArea()
+            }
         }
     }
 
@@ -329,9 +347,12 @@ private struct ShellTopBar: View {
     @EnvironmentObject private var router: ShellRouter
     @EnvironmentObject private var auth: AuthStore
     @AppStorage("themeMode") private var themeMode = "system"
+    @AppStorage("uiStyle") private var uiStyle = UIStyleMode.classic.rawValue
     @FocusState private var searchFocused: Bool
 
     let isRegular: Bool
+
+    private var isGlass: Bool { uiStyle == UIStyleMode.glass.rawValue }
 
     var body: some View {
         HStack(spacing: 10) {
@@ -343,20 +364,54 @@ private struct ShellTopBar: View {
 
             Spacer(minLength: 6)
 
+            uiStyleButton
+
             themeButton
 
             userChip
         }
         .padding(.horizontal, isRegular ? 18 : 10)
         .frame(height: 52)
+        .background {
+            if isGlass {
+                LiquidGlassSurface(shape: Rectangle(), borderStrength: 0)
+            }
+        }
         .overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(Color.primary.opacity(0.06))
+            if isGlass {
+                LinearGradient(
+                    colors: [Color.white.opacity(0.65), Color.white.opacity(0.1)],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
                 .frame(height: 0.5)
+            } else {
+                Rectangle()
+                    .fill(Color.primary.opacity(0.06))
+                    .frame(height: 0.5)
+            }
         }
         .onChange(of: router.focusSearchToken) { _, _ in
             searchFocused = true
         }
+    }
+
+    /// 快速切换经典 / 液态玻璃界面
+    private var uiStyleButton: some View {
+        Button {
+            withAnimation(.easeInOut(duration: 0.25)) {
+                uiStyle = isGlass ? UIStyleMode.classic.rawValue : UIStyleMode.glass.rawValue
+            }
+        } label: {
+            Image(systemName: isGlass ? "drop.fill" : "drop")
+                .font(.system(size: 15, weight: .medium))
+                .foregroundStyle(isGlass ? Color.splayerAccent : Color.secondary)
+                .frame(width: 30, height: 30)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(isGlass ? "切换到经典界面" : "切换到液态玻璃界面")
+        .accessibilityLabel(isGlass ? "切换到经典界面" : "切换到液态玻璃界面")
     }
 
     private var historyButtons: some View {
@@ -420,7 +475,13 @@ private struct ShellTopBar: View {
         }
         .padding(.horizontal, 10)
         .frame(height: 34)
-        .background(Color.primary.opacity(0.06), in: Capsule())
+        .background {
+            if isGlass {
+                LiquidGlassSurface(shape: Capsule(), borderStrength: 0.9)
+            } else {
+                Capsule().fill(Color.primary.opacity(0.06))
+            }
+        }
         .frame(maxWidth: isRegular ? 460 : .infinity)
     }
 
@@ -470,7 +531,13 @@ private struct ShellTopBar: View {
             .padding(.leading, 3)
             .padding(.trailing, isRegular ? 8 : 3)
             .padding(.vertical, 3)
-            .background(Color.primary.opacity(0.05), in: Capsule())
+            .background {
+                if isGlass {
+                    LiquidGlassSurface(shape: Capsule(), borderStrength: 0.9)
+                } else {
+                    Capsule().fill(Color.primary.opacity(0.05))
+                }
+            }
         }
         .buttonStyle(.plain)
         .accessibilityLabel("个人主页")

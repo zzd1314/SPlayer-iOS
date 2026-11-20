@@ -150,7 +150,7 @@ struct UserProfileView: View {
             Spacer(minLength: 0)
         }
         .padding(14)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .appCardBackground(cornerRadius: 18)
     }
 
     private var canFollow: Bool {
@@ -183,7 +183,7 @@ struct UserProfileView: View {
                     .foregroundStyle(.secondary)
             }
             .padding(10)
-            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .appCardBackground(cornerRadius: 14)
         }
         .buttonStyle(.plain)
     }

@@ -157,7 +157,7 @@ struct HomeView: View {
         .padding(.horizontal, 11)
         .padding(.vertical, 9)
         .frame(maxWidth: .infinity)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .appCardBackground(cornerRadius: 14)
     }
 
     private var timeGreeting: String {
@@ -198,7 +198,7 @@ struct HomeView: View {
                     .foregroundStyle(.secondary)
             }
             .padding(12)
-            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .appCardBackground(cornerRadius: 16)
         }
         .buttonStyle(.plain)
     }
@@ -269,7 +269,7 @@ struct HomeView: View {
                 Spacer(minLength: 0)
             }
             .padding(10)
-            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .appCardBackground(cornerRadius: 14)
         }
         .buttonStyle(.plain)
     }
