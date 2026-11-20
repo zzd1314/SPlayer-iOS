@@ -154,6 +154,9 @@ struct HomeView: View {
                 discoverCard(title: "全部歌手", icon: "person.2.fill", tint: .indigo) {
                     ArtistListView()
                 }
+                discoverCard(title: "云村动态", icon: "text.bubble.fill", tint: .teal) {
+                    EventFeedView()
+                }
             }
         }
     }

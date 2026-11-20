@@ -36,6 +36,7 @@ SPlayer-Next（[SPlayer-Dev/SPlayer-Next](https://github.com/SPlayer-Dev/SPlayer
 - [x] M25 下载管理：显式下载 / 删除 / 空间统计，播放优先使用下载文件
 - [x] M26 云盘上传：本地音频上传到网易云云盘（multipart/form-data）
 - [x] M27 私信：最近联系人、会话历史、发送消息
+- [x] M28 云村动态：动态流、图片、分享歌曲播放、点赞
 
 ## 构建
 
