@@ -148,6 +148,12 @@ struct HomeView: View {
                 discoverCard(title: "新碟上架", icon: "opticaldisc.fill", tint: .purple) {
                     NewAlbumsView()
                 }
+                discoverCard(title: "播客电台", icon: "radio", tint: .pink) {
+                    PodcastListView()
+                }
+                discoverCard(title: "全部歌手", icon: "person.2.fill", tint: .indigo) {
+                    ArtistListView()
+                }
             }
         }
     }
