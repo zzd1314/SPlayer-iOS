@@ -13,6 +13,7 @@ struct FullPlayerView: View {
 
     @State private var showLyrics = false
     @State private var showQueue = false
+    @State private var showComments = false
     @State private var dragTime: TimeInterval?
     @State private var hint: String?
     @State private var hintTask: Task<Void, Never>?
@@ -35,6 +36,11 @@ struct FullPlayerView: View {
         .sheet(isPresented: $showQueue) {
             PlayQueueView()
                 .presentationDetents([.medium, .large])
+        }
+        .sheet(isPresented: $showComments) {
+            if let song = player.currentSong {
+                CommentsView(songId: song.id, songName: song.name)
+            }
         }
         .onAppear {
             updateIdleTimer()
@@ -308,7 +314,7 @@ struct FullPlayerView: View {
     }
 
     private var bottomBar: some View {
-        HStack(spacing: 18) {
+        HStack(spacing: 14) {
             Button {
                 withAnimation(.easeInOut(duration: 0.25)) {
                     showLyrics.toggle()
@@ -332,6 +338,12 @@ struct FullPlayerView: View {
                 ShareLink(item: url) {
                     Image(systemName: "square.and.arrow.up")
                 }
+            }
+
+            Button {
+                showComments = true
+            } label: {
+                Image(systemName: "bubble.left")
             }
 
             Button {
@@ -439,6 +451,8 @@ struct PlayQueueView: View {
     @EnvironmentObject private var player: PlayerStore
     @Environment(\.dismiss) private var dismiss
 
+    @State private var editMode: EditMode = .inactive
+
     var body: some View {
         NavigationStack {
             List {
@@ -468,18 +482,32 @@ struct PlayQueueView: View {
                         }
                     }
                     .buttonStyle(.plain)
+                    .disabled(editMode == .active)
                     .listRowBackground(
                         index == player.currentIndex
                             ? Color.splayerAccent.opacity(0.08)
                             : Color.clear
                     )
                 }
+                .onMove { source, destination in
+                    player.moveQueue(fromOffsets: source, toOffset: destination)
+                }
             }
+            .environment(\.editMode, $editMode)
             .navigationTitle("播放队列")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    if !player.queue.isEmpty {
+                        Button(editMode == .active ? "完成" : "排序") {
+                            withAnimation {
+                                editMode = editMode == .active ? .inactive : .active
+                            }
+                        }
+                    }
+                }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("完成") {
+                    Button("关闭") {
                         dismiss()
                     }
                 }

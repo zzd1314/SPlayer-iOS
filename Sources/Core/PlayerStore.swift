@@ -293,6 +293,17 @@ final class PlayerStore: ObservableObject {
         }
     }
 
+    /// 调整播放队列顺序，并同步当前播放索引
+    func moveQueue(fromOffsets: IndexSet, toOffset: Int) {
+        guard !queue.isEmpty else { return }
+        let currentSongID = currentSong?.id
+        queue.move(fromOffsets: fromOffsets, toOffset: toOffset)
+        if let currentSongID, let index = queue.firstIndex(where: { $0.id == currentSongID }) {
+            currentIndex = index
+        }
+        persistPlaybackState()
+    }
+
     private func recordRecent(_ song: Song) {
         recentSongs.removeAll { $0.id == song.id }
         recentSongs.insert(song, at: 0)

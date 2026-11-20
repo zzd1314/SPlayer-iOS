@@ -19,6 +19,7 @@ SPlayer-Next（[SPlayer-Dev/SPlayer-Next](https://github.com/SPlayer-Dev/SPlayer
 - [x] M8 首页发现（每日推荐 / 推荐歌单 / 排行榜）+ 我喜欢的音乐 + 最近播放
 - [x] M9 搜索分类（单曲 / 歌手 / 专辑 / 歌单）+ 歌手 / 专辑详情页
 - [x] M10 歌曲列表快捷收藏 + 歌曲 / 歌单 / 歌手 / 专辑分享
+- [x] M11 关注歌手 / 收藏歌单 / 歌曲评论 / 播放队列拖拽排序
 
 ## 构建
 

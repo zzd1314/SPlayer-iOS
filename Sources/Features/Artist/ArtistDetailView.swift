@@ -13,6 +13,9 @@ struct ArtistDetailView: View {
     @State private var isLoading = false
     @State private var loadedOnce = false
     @State private var errorText: String?
+    @State private var isFollowed = false
+    @State private var isFollowing = false
+    @State private var actionError: String?
 
     private var info: ArtistSummary {
         detail ?? artist
@@ -76,6 +79,13 @@ struct ArtistDetailView: View {
         .navigationTitle(artist.name)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button(isFollowed ? "已关注" : "关注") {
+                    Task { await toggleFollow() }
+                }
+                .disabled(isFollowing || !auth.isLoggedIn)
+                .foregroundStyle(isFollowed ? Color.splayerAccent : Color.primary)
+            }
             if let url = artist.shareURL {
                 ToolbarItem(placement: .topBarTrailing) {
                     ShareLink(item: url) {
@@ -115,6 +125,14 @@ struct ArtistDetailView: View {
                     }
                 }
             }
+        }
+        .alert("操作失败", isPresented: Binding(
+            get: { actionError != nil },
+            set: { if !$0 { actionError = nil } }
+        )) {
+            Button("好", role: .cancel) {}
+        } message: {
+            Text(actionError ?? "")
         }
     }
 
@@ -188,6 +206,25 @@ struct ArtistDetailView: View {
         }
 
         albums = (try? await api.artistAlbums(id: artist.id, cookie: cookie)) ?? []
+
+        if let cookie, let ids = try? await api.subscribedArtistIDs(cookie: cookie) {
+            isFollowed = ids.contains(artist.id)
+        }
+    }
+
+    private func toggleFollow() async {
+        guard !isFollowing, let cookie = auth.cookie else { return }
+        isFollowing = true
+        defer { isFollowing = false }
+
+        let target = !isFollowed
+        isFollowed = target
+        do {
+            try await NeteaseAPI().setArtistSubscribed(id: artist.id, subscribe: target, cookie: cookie)
+        } catch {
+            isFollowed = !target
+            actionError = error.localizedDescription
+        }
     }
 }
 

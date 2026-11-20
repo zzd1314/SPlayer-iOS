@@ -11,6 +11,9 @@ struct PlaylistDetailView: View {
     @State private var isLoading = false
     @State private var loadedOnce = false
     @State private var errorText: String?
+    @State private var isSubscribed = false
+    @State private var isSubscribing = false
+    @State private var actionError: String?
 
     var body: some View {
         List {
@@ -47,6 +50,16 @@ struct PlaylistDetailView: View {
         .navigationTitle(playlist.name)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    Task { await toggleSubscribe() }
+                } label: {
+                    Image(systemName: isSubscribed ? "checkmark.circle.fill" : "plus.circle")
+                }
+                .disabled(isSubscribing || !auth.isLoggedIn)
+                .foregroundStyle(isSubscribed ? Color.splayerAccent : Color.primary)
+                .accessibilityLabel(isSubscribed ? "取消收藏歌单" : "收藏歌单")
+            }
             if let url = playlist.shareURL {
                 ToolbarItem(placement: .topBarTrailing) {
                     ShareLink(item: url) {
@@ -86,6 +99,14 @@ struct PlaylistDetailView: View {
                     }
                 }
             }
+        }
+        .alert("操作失败", isPresented: Binding(
+            get: { actionError != nil },
+            set: { if !$0 { actionError = nil } }
+        )) {
+            Button("好", role: .cancel) {}
+        } message: {
+            Text(actionError ?? "")
         }
     }
 
@@ -129,10 +150,31 @@ struct PlaylistDetailView: View {
             loadedOnce = true
         }
 
+        let api = NeteaseAPI()
+
         do {
-            songs = try await NeteaseAPI().playlistTracks(id: playlist.id, cookie: auth.cookie)
+            songs = try await api.playlistTracks(id: playlist.id, cookie: auth.cookie)
         } catch {
             errorText = error.localizedDescription
+        }
+
+        if let subscribed = try? await api.playlistSubscribed(id: playlist.id, cookie: auth.cookie) {
+            isSubscribed = subscribed
+        }
+    }
+
+    private func toggleSubscribe() async {
+        guard !isSubscribing, let cookie = auth.cookie else { return }
+        isSubscribing = true
+        defer { isSubscribing = false }
+
+        let target = !isSubscribed
+        isSubscribed = target
+        do {
+            try await NeteaseAPI().setPlaylistSubscribed(id: playlist.id, subscribe: target, cookie: cookie)
+        } catch {
+            isSubscribed = !target
+            actionError = error.localizedDescription
         }
     }
 }
