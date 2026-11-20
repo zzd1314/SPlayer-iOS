@@ -48,17 +48,25 @@ struct RootView: View {
         .preferredColorScheme(colorScheme)
         .task {
             player.cookie = auth.cookie
-            guard auth.isLoggedIn else { return }
+            guard auth.isLoggedIn else {
+                await player.applyAccount(userID: nil)
+                return
+            }
             await auth.refreshProfile()
             player.cookie = auth.cookie
+            await player.applyAccount(userID: auth.profile?.userId)
             await player.restoreIfNeeded()
         }
         .onChange(of: auth.cookie) { _, newValue in
             player.cookie = newValue
-            guard newValue != nil else { return }
+            guard newValue != nil else {
+                Task { await player.applyAccount(userID: nil) }
+                return
+            }
             Task {
                 await auth.refreshProfile()
                 player.cookie = auth.cookie
+                await player.applyAccount(userID: auth.profile?.userId)
                 await player.restoreIfNeeded()
             }
         }

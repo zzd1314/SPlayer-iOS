@@ -3,6 +3,7 @@ import SwiftUI
 /// 资料库：账号信息 + 歌单卡片网格（贴近桌面版）
 struct LibraryView: View {
     @EnvironmentObject private var auth: AuthStore
+    @EnvironmentObject private var player: PlayerStore
 
     @State private var playlists: [Playlist] = []
     @State private var isLoading = false
@@ -17,6 +18,8 @@ struct LibraryView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
                     profileHeader
+
+                    quickLinks
 
                     if !playlists.isEmpty {
                         Text("我的歌单")
@@ -86,6 +89,63 @@ struct LibraryView: View {
         }
         .padding(14)
         .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+    }
+
+    private var quickLinks: some View {
+        HStack(spacing: 12) {
+            quickLink(
+                title: "我喜欢的音乐",
+                subtitle: "\(player.likedSongIds.count) 首",
+                systemImage: "heart.fill",
+                color: .splayerAccent
+            ) {
+                LikedSongsView()
+            }
+
+            quickLink(
+                title: "最近播放",
+                subtitle: "\(player.recentSongs.count) 首",
+                systemImage: "clock.arrow.circlepath",
+                color: .blue
+            ) {
+                RecentPlaysView()
+            }
+        }
+    }
+
+    private func quickLink<Destination: View>(
+        title: String,
+        subtitle: String,
+        systemImage: String,
+        color: Color,
+        @ViewBuilder destination: () -> Destination
+    ) -> some View {
+        NavigationLink {
+            destination()
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(color)
+                    .frame(width: 38, height: 38)
+                    .background(color.opacity(0.14), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.subheadline.weight(.medium))
+                        .lineLimit(1)
+                    Text(subtitle)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer(minLength: 0)
+            }
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+        .buttonStyle(.plain)
     }
 
     private func load() async {

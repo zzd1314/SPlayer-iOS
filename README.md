@@ -15,6 +15,8 @@ SPlayer-Next（[SPlayer-Dev/SPlayer-Next](https://github.com/SPlayer-Dev/SPlayer
 - [x] M4 播放 + 本地缓存 + 后台/锁屏控制
 - [x] M5 歌词滚动 + 设置页
 - [x] M6 预载下一曲 / 错误态打磨
+- [x] M7 手机号/邮箱验证码登录 + 播放模式 + 桌面歌词小组件 / iPad 适配
+- [x] M8 首页发现（每日推荐 / 推荐歌单 / 排行榜）+ 我喜欢的音乐 + 最近播放
 
 ## 构建
 

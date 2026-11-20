@@ -308,7 +308,7 @@ struct FullPlayerView: View {
     }
 
     private var bottomBar: some View {
-        HStack {
+        HStack(spacing: 18) {
             Button {
                 withAnimation(.easeInOut(duration: 0.25)) {
                     showLyrics.toggle()
@@ -329,6 +329,13 @@ struct FullPlayerView: View {
             Spacer()
 
             Button {
+                Task { await toggleLike() }
+            } label: {
+                Image(systemName: player.isCurrentSongLiked ? "heart.fill" : "heart")
+                    .foregroundStyle(player.isCurrentSongLiked ? accent : .white.opacity(0.85))
+            }
+
+            Button {
                 showQueue = true
             } label: {
                 Image(systemName: "list.bullet")
@@ -337,6 +344,15 @@ struct FullPlayerView: View {
         .font(.footnote)
         .foregroundStyle(.white.opacity(0.85))
         .buttonStyle(.plain)
+    }
+
+    private func toggleLike() async {
+        do {
+            try await player.toggleLikeCurrent()
+            showHint(player.isCurrentSongLiked ? "已收藏" : "已取消收藏")
+        } catch {
+            showHint("操作失败：\(error.localizedDescription)")
+        }
     }
 
     private var qualityLabel: String {

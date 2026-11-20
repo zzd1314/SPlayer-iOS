@@ -24,9 +24,15 @@ final class PlayerStore: ObservableObject {
     @Published private(set) var coverAccent: Color?
     @Published private(set) var repeatMode: RepeatMode = .off
     @Published private(set) var isShuffleEnabled = false
+    /// 最近播放（最新在前，最多 100 首）
+    @Published private(set) var recentSongs: [Song] = []
+    /// 我喜欢的音乐（歌曲 id）
+    @Published private(set) var likedSongIds: Set<Int> = []
 
     /// 登录 Cookie（由 RootView 同步）
     var cookie: String?
+    /// 当前登录用户 id（由 RootView 同步）
+    var userID: Int?
 
     private let player = AVPlayer()
     private var endObserver: NSObjectProtocol?
@@ -45,6 +51,10 @@ final class PlayerStore: ObservableObject {
             repeatMode = mode
         }
         isShuffleEnabled = UserDefaults.standard.bool(forKey: "shuffleEnabled")
+        if let data = UserDefaults.standard.data(forKey: "recentSongs"),
+           let saved = try? JSONDecoder().decode([Song].self, from: data) {
+            recentSongs = saved
+        }
 
         configureAudioSession()
         registerRemoteCommands()
@@ -214,6 +224,77 @@ final class PlayerStore: ObservableObject {
         await loadCurrent(autoPlay: true)
     }
 
+    // MARK: - 最近播放 / 收藏
+
+    var isCurrentSongLiked: Bool {
+        guard let id = currentSong?.id else { return false }
+        return likedSongIds.contains(id)
+    }
+
+    func clearRecent() {
+        recentSongs = []
+        UserDefaults.standard.removeObject(forKey: "recentSongs")
+    }
+
+    /// 登录态变化时同步账号信息并刷新收藏
+    func applyAccount(userID: Int?) async {
+        self.userID = userID
+        guard userID != nil else {
+            likedSongIds = []
+            return
+        }
+        await refreshLikes()
+    }
+
+    /// 拉取「我喜欢的音乐」id 集合
+    func refreshLikes() async {
+        guard let userID, let cookie, !cookie.isEmpty else { return }
+        do {
+            let ids = try await NeteaseAPI().likeList(uid: userID, cookie: cookie)
+            likedSongIds = Set(ids)
+        } catch {
+            // 收藏列表加载失败不阻塞播放
+        }
+    }
+
+    /// 收藏 / 取消收藏当前歌曲（失败时恢复本地状态）
+    func toggleLikeCurrent() async throws {
+        guard let song = currentSong else { return }
+        guard let cookie, !cookie.isEmpty else {
+            throw APIError.business(code: -1, message: "请先登录")
+        }
+
+        let wasLiked = likedSongIds.contains(song.id)
+        let target = !wasLiked
+        if target {
+            likedSongIds.insert(song.id)
+        } else {
+            likedSongIds.remove(song.id)
+        }
+
+        do {
+            try await NeteaseAPI().setLike(songId: song.id, like: target, cookie: cookie)
+        } catch {
+            if wasLiked {
+                likedSongIds.insert(song.id)
+            } else {
+                likedSongIds.remove(song.id)
+            }
+            throw error
+        }
+    }
+
+    private func recordRecent(_ song: Song) {
+        recentSongs.removeAll { $0.id == song.id }
+        recentSongs.insert(song, at: 0)
+        if recentSongs.count > 100 {
+            recentSongs.removeLast(recentSongs.count - 100)
+        }
+        if let data = try? JSONEncoder().encode(recentSongs) {
+            UserDefaults.standard.set(data, forKey: "recentSongs")
+        }
+    }
+
     // MARK: - 播放
 
     private func resume() {
@@ -272,6 +353,7 @@ final class PlayerStore: ObservableObject {
             if shouldPlay {
                 player.play()
                 isPlaying = true
+                recordRecent(song)
             } else {
                 player.pause()
                 isPlaying = false
