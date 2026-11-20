@@ -1,0 +1,155 @@
+import SwiftUI
+
+/// 专辑详情：封面信息 + 歌曲列表
+struct AlbumDetailView: View {
+    let album: AlbumSummary
+
+    @EnvironmentObject private var auth: AuthStore
+    @EnvironmentObject private var player: PlayerStore
+
+    @State private var detail: AlbumSummary?
+    @State private var songs: [Song] = []
+    @State private var isLoading = false
+    @State private var loadedOnce = false
+    @State private var errorText: String?
+
+    private var info: AlbumSummary {
+        detail ?? album
+    }
+
+    var body: some View {
+        List {
+            Section {
+                header
+                    .listRowBackground(Color.clear)
+            }
+
+            Section {
+                ForEach(Array(songs.enumerated()), id: \.offset) { index, song in
+                    Button {
+                        play(song)
+                    } label: {
+                        SongRow(index: index + 1, song: song)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(player.currentSong?.id == song.id ? Color.splayerAccent : Color.primary)
+                }
+
+                if songs.isEmpty, loadedOnce, errorText == nil, !isLoading {
+                    Text("暂无歌曲")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 24)
+                }
+            } header: {
+                if !songs.isEmpty {
+                    Text("\(songs.count) 首歌曲")
+                }
+            }
+        }
+        .listStyle(.plain)
+        .adaptiveListBackground()
+        .navigationTitle(album.name)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if !songs.isEmpty {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        Task { await player.play(songs, startAt: 0) }
+                    } label: {
+                        Label("播放全部", systemImage: "play.fill")
+                    }
+                }
+            }
+        }
+        .task {
+            if !loadedOnce {
+                await load()
+            }
+        }
+        .overlay {
+            if isLoading && songs.isEmpty {
+                ProgressView()
+            }
+        }
+        .overlay {
+            if let errorText, songs.isEmpty, !isLoading {
+                ContentUnavailableView {
+                    Label("加载失败", systemImage: "wifi.exclamationmark")
+                } description: {
+                    Text(errorText)
+                } actions: {
+                    Button("重试") {
+                        Task { await load() }
+                    }
+                }
+            }
+        }
+    }
+
+    private var header: some View {
+        HStack(alignment: .top, spacing: 14) {
+            CoverImage(urlString: info.picUrl, size: 110, cornerRadius: 12)
+
+            VStack(alignment: .leading, spacing: 5) {
+                Text(info.name)
+                    .font(.headline)
+                    .lineLimit(3)
+                Text(info.artistText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+
+                if let metaText = metaText {
+                    Text(metaText)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 4)
+    }
+
+    private var metaText: String? {
+        var parts: [String] = []
+        if let date = info.publishDateText {
+            parts.append(date)
+        }
+        let count = songs.isEmpty ? (info.size ?? 0) : songs.count
+        if count > 0 {
+            parts.append("\(count) 首")
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
+    private func play(_ song: Song) {
+        Task {
+            if AppSettings.songListPlayBehavior == "current" {
+                await player.play([song], startAt: 0)
+            } else {
+                await player.play(song: song, in: songs)
+            }
+        }
+    }
+
+    private func load() async {
+        guard !isLoading else { return }
+        isLoading = true
+        errorText = nil
+        defer {
+            isLoading = false
+            loadedOnce = true
+        }
+
+        do {
+            let result = try await NeteaseAPI().albumDetail(id: album.id, cookie: auth.cookie)
+            detail = result.album
+            songs = result.songs
+        } catch {
+            errorText = error.localizedDescription
+        }
+    }
+}
