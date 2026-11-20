@@ -41,6 +41,7 @@ SPlayer-Next（[SPlayer-Dev/SPlayer-Next](https://github.com/SPlayer-Dev/SPlayer
 - [x] M30 扫码登录稳定性：过期自动刷新、断网续轮询、本地生成二维码
 - [x] M31 iPad 宽屏播放器（封面背景 + 右侧歌词分栏）、悬浮胶囊迷你播放条
 - [x] M32 桌面版式改版：左侧图标栏 + 顶部导航栏 + 底部整条播放栏、发现页、双栏设置弹窗
+- [x] M33 登录接口改为 POST 表单，非 2xx 时透出服务端真实原因（验证码错误 / 安全验证等）
 
 ## 平台差异（iOS 限制）
 

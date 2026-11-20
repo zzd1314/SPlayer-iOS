@@ -11,13 +11,22 @@ enum APIError: LocalizedError {
         case .badURL:
             return "API 地址无效，请在设置中检查"
         case .http(let code):
+            if code == 400 || code == 403 {
+                return "请求被服务端拒绝（HTTP \(code)），请检查 API 地址，或稍后改用扫码登录"
+            }
             return "网络错误（HTTP \(code)）"
         case .business(let code, let message):
+            if APIError.riskControlCodes.contains(code) {
+                return "登录触发网易云安全验证，请稍后重试或改用扫码登录"
+            }
             return message ?? "接口错误（\(code)）"
         case .invalidResponse:
             return "响应解析失败"
         }
     }
+
+    /// 网易云风控类错误码：登录被判定为异常时返回
+    static let riskControlCodes: Set<Int> = [-460, -461, -462, -463, -447]
 }
 
 /// 网易云音乐接口客户端
@@ -53,16 +62,90 @@ struct NeteaseAPI {
 
         let (data, response) = try await URLSession.shared.data(for: request)
         if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
-            throw APIError.http(http.statusCode)
+            throw Self.serverError(from: data, status: http.statusCode)
         }
 
         do {
             return try JSONDecoder().decode(T.self, from: data)
         } catch {
             if let envelope = try? JSONDecoder().decode(ErrorEnvelope.self, from: data) {
-                throw APIError.business(code: envelope.code, message: envelope.msg ?? envelope.message)
+                throw APIError.business(code: envelope.code ?? -1, message: envelope.msg ?? envelope.message)
             }
             throw APIError.invalidResponse
+        }
+    }
+
+    /// POST 表单请求：登录、验证码等含凭据的接口，避免把参数放在 URL 上
+    func post<T: Decodable>(
+        _ path: String,
+        fields: [String: String] = [:],
+        cookie: String? = nil
+    ) async throws -> T {
+        guard var components = URLComponents(string: baseURL) else {
+            throw APIError.badURL
+        }
+        components.path = path
+        components.queryItems = [
+            URLQueryItem(name: "timestamp", value: String(Int(Date().timeIntervalSince1970 * 1000)))
+        ]
+        guard let url = components.url else { throw APIError.badURL }
+
+        var bodyComponents = URLComponents()
+        bodyComponents.queryItems = fields.map { URLQueryItem(name: $0.key, value: $0.value) }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 15
+        request.setValue(
+            "application/x-www-form-urlencoded; charset=utf-8",
+            forHTTPHeaderField: "Content-Type"
+        )
+        request.httpBody = bodyComponents.percentEncodedQuery?.data(using: .utf8)
+        if let cookie, !cookie.isEmpty {
+            request.setValue(cookie, forHTTPHeaderField: "Cookie")
+        }
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
+            throw Self.serverError(from: data, status: http.statusCode)
+        }
+
+        do {
+            return try JSONDecoder().decode(T.self, from: data)
+        } catch {
+            if let envelope = try? JSONDecoder().decode(ErrorEnvelope.self, from: data) {
+                throw APIError.business(code: envelope.code ?? -1, message: envelope.msg ?? envelope.message)
+            }
+            throw APIError.invalidResponse
+        }
+    }
+
+    /// 非 2xx 时尽量取出服务端 JSON 里的原因，避免只显示「HTTP 400」
+    private static func serverError(from data: Data, status: Int) -> APIError {
+        if let envelope = try? JSONDecoder().decode(ErrorEnvelope.self, from: data) {
+            let text = envelope.message ?? envelope.msg
+            if let text, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return .business(code: envelope.code ?? status, message: text)
+            }
+        }
+        return .http(status)
+    }
+
+    /// 登录类错误统一补充可操作提示
+    private static func authError(_ error: APIError, action: String) -> APIError {
+        switch error {
+        case .http(400), .http(403):
+            return .business(
+                code: 400,
+                message: "\(action)请求被服务端拒绝，可能触发了网易云安全验证。请稍后重试或改用扫码登录"
+            )
+        case .business(let code, let message):
+            if APIError.riskControlCodes.contains(code) {
+                return .business(code: code, message: "\(action)触发网易云安全验证，请稍后重试或改用扫码登录")
+            }
+            return .business(code: code, message: message)
+        default:
+            return error
         }
     }
 
@@ -112,14 +195,14 @@ struct NeteaseAPI {
 
         let (data, response) = try await URLSession.shared.data(for: request)
         if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
-            throw APIError.http(http.statusCode)
+            throw Self.serverError(from: data, status: http.statusCode)
         }
 
         do {
             return try JSONDecoder().decode(T.self, from: data)
         } catch {
             if let envelope = try? JSONDecoder().decode(ErrorEnvelope.self, from: data) {
-                throw APIError.business(code: envelope.code, message: envelope.msg ?? envelope.message)
+                throw APIError.business(code: envelope.code ?? -1, message: envelope.msg ?? envelope.message)
             }
             throw APIError.invalidResponse
         }
@@ -133,7 +216,7 @@ private extension Data {
 }
 
 private struct ErrorEnvelope: Decodable {
-    let code: Int
+    let code: Int?
     let msg: String?
     let message: String?
 }
@@ -218,19 +301,24 @@ extension NeteaseAPI {
         return response.profile
     }
 
-    /// 发送验证码：手机号或邮箱二选一
+    /// 发送验证码：手机号或邮箱二选一（POST 表单，避免凭据出现在 URL）
     func sendCaptcha(phone: String? = nil, email: String? = nil, countryCode: String = "86") async throws {
-        var query: [String: String] = [:]
+        var fields: [String: String] = [:]
         if let phone, !phone.isEmpty {
-            query["phone"] = phone
-            query["ctcode"] = countryCode
+            fields["phone"] = phone
+            fields["ctcode"] = countryCode
         } else if let email, !email.isEmpty {
-            query["email"] = email
+            fields["email"] = email
         } else {
             throw APIError.business(code: -1, message: "请输入手机号或邮箱")
         }
 
-        let response: CaptchaResponse = try await get("/captcha/sent", query: query)
+        let response: CaptchaResponse
+        do {
+            response = try await post("/captcha/sent", fields: fields)
+        } catch let error as APIError {
+            throw Self.authError(error, action: "发送验证码")
+        }
         guard response.code == 200 else {
             throw APIError.business(
                 code: response.code,
@@ -241,15 +329,23 @@ extension NeteaseAPI {
 
     /// 手机号 + 验证码登录
     func loginCellphone(phone: String, captcha: String, countryCode: String) async throws -> String {
-        let response: LoginResponse = try await get("/login/cellphone", query: [
-            "phone": phone,
-            "captcha": captcha,
-            "countrycode": countryCode
-        ])
+        let response: LoginResponse
+        do {
+            response = try await post("/login/cellphone", fields: [
+                "phone": phone,
+                "captcha": captcha,
+                "countrycode": countryCode
+            ])
+        } catch let error as APIError {
+            throw Self.authError(error, action: "登录")
+        }
         guard response.code == 200 else {
             throw APIError.business(
                 code: response.code,
-                message: response.message ?? response.msg ?? "登录失败（\(response.code)）"
+                message: Self.loginMessage(
+                    code: response.code,
+                    text: response.message ?? response.msg ?? "登录失败（\(response.code)）"
+                )
             )
         }
         guard let cookie = response.cookie, !cookie.isEmpty else {
@@ -260,20 +356,36 @@ extension NeteaseAPI {
 
     /// 邮箱 + 验证码登录
     func loginEmail(email: String, captcha: String) async throws -> String {
-        let response: LoginResponse = try await get("/login", query: [
-            "email": email,
-            "captcha": captcha
-        ])
+        let response: LoginResponse
+        do {
+            response = try await post("/login", fields: [
+                "email": email,
+                "captcha": captcha
+            ])
+        } catch let error as APIError {
+            throw Self.authError(error, action: "登录")
+        }
         guard response.code == 200 else {
             throw APIError.business(
                 code: response.code,
-                message: response.message ?? response.msg ?? "登录失败（\(response.code)）"
+                message: Self.loginMessage(
+                    code: response.code,
+                    text: response.message ?? response.msg ?? "登录失败（\(response.code)）"
+                )
             )
         }
         guard let cookie = response.cookie, !cookie.isEmpty else {
             throw APIError.business(code: -1, message: "登录返回的 Cookie 为空，请重试")
         }
         return cookie
+    }
+
+    /// 登录失败的文案：风控类错误给出替代方案
+    private static func loginMessage(code: Int, text: String) -> String {
+        if APIError.riskControlCodes.contains(code) {
+            return "登录触发网易云安全验证，请稍后重试或改用扫码登录"
+        }
+        return text
     }
 }
 
