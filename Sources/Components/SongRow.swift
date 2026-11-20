@@ -12,6 +12,9 @@ struct SongRow: View {
 
     @State private var isLikeBusy = false
     @State private var showAddToPlaylist = false
+    @State private var isDownloading = false
+    @State private var downloaded = false
+    @State private var downloadError: String?
 
     var body: some View {
         HStack(spacing: 10) {
@@ -35,6 +38,13 @@ struct SongRow: View {
             }
 
             Spacer(minLength: 0)
+
+            if downloaded {
+                Image(systemName: "arrow.down.circle.fill")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .accessibilityLabel("已下载")
+            }
 
             if showsLikeButton {
                 Button {
@@ -60,9 +70,38 @@ struct SongRow: View {
                     Label("添加到歌单", systemImage: "text.badge.plus")
                 }
             }
+
+            if song.id > 0 {
+                if downloaded {
+                    Button(role: .destructive) {
+                        DownloadStore.remove(song.id)
+                        downloaded = false
+                    } label: {
+                        Label("删除下载", systemImage: "trash")
+                    }
+                } else {
+                    Button {
+                        Task { await download() }
+                    } label: {
+                        Label(isDownloading ? "下载中…" : "下载", systemImage: "arrow.down.circle")
+                    }
+                    .disabled(isDownloading)
+                }
+            }
         }
         .sheet(isPresented: $showAddToPlaylist) {
             AddToPlaylistSheet(song: song)
+        }
+        .onAppear {
+            downloaded = DownloadStore.isDownloaded(song.id)
+        }
+        .alert("下载失败", isPresented: Binding(
+            get: { downloadError != nil },
+            set: { if !$0 { downloadError = nil } }
+        )) {
+            Button("好", role: .cancel) {}
+        } message: {
+            Text(downloadError ?? "")
         }
     }
 
@@ -79,6 +118,23 @@ struct SongRow: View {
 
     private var isLiked: Bool {
         player.likedSongIds.contains(song.id)
+    }
+
+    private func download() async {
+        guard !isDownloading, song.id > 0 else { return }
+        isDownloading = true
+        defer { isDownloading = false }
+
+        do {
+            try await DownloadStore.download(
+                song,
+                quality: AppSettings.audioLevel,
+                cookie: auth.cookie
+            )
+            downloaded = true
+        } catch {
+            downloadError = error.localizedDescription
+        }
     }
 
     private func toggleLike() async {

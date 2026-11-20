@@ -85,6 +85,17 @@ struct SettingsView: View {
                     }
 
                     NavigationLink {
+                        DownloadManageView()
+                    } label: {
+                        SettingsGroupRow(
+                            icon: "arrow.down.circle.fill",
+                            color: .teal,
+                            title: "下载管理",
+                            subtitle: "已下载歌曲与空间占用"
+                        )
+                    }
+
+                    NavigationLink {
                         AboutSettingsView()
                     } label: {
                         SettingsGroupRow(

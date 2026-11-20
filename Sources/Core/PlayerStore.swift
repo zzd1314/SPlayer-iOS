@@ -439,6 +439,8 @@ final class PlayerStore: ObservableObject {
             let item: AVPlayerItem
             if let localURL = LocalMusicStore.url(for: song.id) {
                 item = AVPlayerItem(url: localURL)
+            } else if let downloadURL = DownloadStore.url(for: song.id) {
+                item = AVPlayerItem(url: downloadURL)
             } else if let streamURL = MediaServerRegistry.streamURL(for: song.id) {
                 item = AVPlayerItem(url: streamURL)
             } else {

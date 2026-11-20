@@ -33,6 +33,7 @@ SPlayer-Next（[SPlayer-Dev/SPlayer-Next](https://github.com/SPlayer-Dev/SPlayer
 - [x] M22 评论扩展至专辑 / 歌单 / MV、收藏专辑列表
 - [x] M23 搜索增强：热搜榜 / 搜索建议 / 搜索历史
 - [x] M24 歌手详情增强：歌手介绍、MV 列表
+- [x] M25 下载管理：显式下载 / 删除 / 空间统计，播放优先使用下载文件
 
 ## 构建
 
