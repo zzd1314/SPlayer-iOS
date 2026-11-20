@@ -11,19 +11,29 @@ final class PlayerStore: ObservableObject {
     @Published private(set) var isPlaying = false
     @Published private(set) var isLoading = false
     @Published private(set) var errorText: String?
+    /// 当前播放进度（秒），供歌词滚动使用
+    @Published private(set) var currentTime: TimeInterval = 0
 
     /// 登录 Cookie（由 RootView 同步）
     var cookie: String?
 
-    private let level = "exhigh"
     private let player = AVPlayer()
     private var endObserver: NSObjectProtocol?
     private var interruptionObserver: NSObjectProtocol?
+    private var timeObserver: Any?
 
     init() {
         configureAudioSession()
         registerRemoteCommands()
         observeInterruptions()
+        timeObserver = player.addPeriodicTimeObserver(
+            forInterval: CMTime(seconds: 0.5, preferredTimescale: 600),
+            queue: .main
+        ) { [weak self] time in
+            Task { @MainActor in
+                self?.currentTime = time.seconds
+            }
+        }
     }
 
     deinit {
@@ -32,6 +42,9 @@ final class PlayerStore: ObservableObject {
         }
         if let interruptionObserver {
             NotificationCenter.default.removeObserver(interruptionObserver)
+        }
+        if let timeObserver {
+            player.removeTimeObserver(timeObserver)
         }
     }
 
@@ -100,10 +113,15 @@ final class PlayerStore: ObservableObject {
         currentSong = song
         isLoading = true
         errorText = nil
+        currentTime = 0
         removeEndObserver()
 
         do {
-            let remoteURL = try await NeteaseAPI().songURL(id: song.id, level: level, cookie: cookie)
+            let remoteURL = try await NeteaseAPI().songURL(
+                id: song.id,
+                level: AppSettings.audioLevel,
+                cookie: cookie
+            )
 
             let item: AVPlayerItem
             if let localURL = AudioCache.cachedURL(songId: song.id) {

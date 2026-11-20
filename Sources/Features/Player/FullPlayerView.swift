@@ -5,6 +5,8 @@ struct FullPlayerView: View {
     @EnvironmentObject private var player: PlayerStore
     @Environment(\.dismiss) private var dismiss
 
+    @State private var showLyrics = false
+
     var body: some View {
         VStack(spacing: 24) {
             Capsule()
@@ -15,7 +17,19 @@ struct FullPlayerView: View {
             Spacer(minLength: 0)
 
             if let song = player.currentSong {
-                CoverImage(urlString: song.albumPicUrl, size: 260, cornerRadius: 16)
+                Group {
+                    if showLyrics {
+                        LyricsView(song: song)
+                    } else {
+                        CoverImage(urlString: song.albumPicUrl, size: 260, cornerRadius: 16)
+                    }
+                }
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        showLyrics.toggle()
+                    }
+                }
 
                 VStack(spacing: 6) {
                     Text(song.name)
@@ -55,6 +69,17 @@ struct FullPlayerView: View {
                     .buttonStyle(.plain)
                 }
                 .padding(.top, 4)
+
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        showLyrics.toggle()
+                    }
+                } label: {
+                    Label(showLyrics ? "封面" : "歌词", systemImage: showLyrics ? "photo" : "text.quote")
+                        .font(.footnote)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
 
                 if player.isLoading {
                     ProgressView()

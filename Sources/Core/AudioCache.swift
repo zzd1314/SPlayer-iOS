@@ -19,4 +19,25 @@ enum AudioCache {
         try? FileManager.default.removeItem(at: dest)
         try? FileManager.default.moveItem(at: tmpURL, to: dest)
     }
+
+    static func totalSize() -> Int64 {
+        let files = (try? FileManager.default.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: [.fileSizeKey]
+        )) ?? []
+        return files.reduce(0) { sum, url in
+            let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+            return sum + Int64(size)
+        }
+    }
+
+    static func clear() {
+        let files = (try? FileManager.default.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: nil
+        )) ?? []
+        for url in files {
+            try? FileManager.default.removeItem(at: url)
+        }
+    }
 }

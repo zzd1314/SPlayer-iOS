@@ -4,6 +4,13 @@ import SwiftUI
 struct SettingsView: View {
     @EnvironmentObject private var auth: AuthStore
     @AppStorage("apiBaseURL") private var apiBaseURL: String = AppSettings.defaultBaseURL
+    @AppStorage("audioLevel") private var audioLevel = "exhigh"
+
+    @State private var cacheSize: Int64 = 0
+
+    private var cacheText: String {
+        cacheSize == 0 ? "0 MB" : ByteCountFormatter.string(fromByteCount: cacheSize, countStyle: .file)
+    }
 
     private var appVersion: String {
         let info = Bundle.main.infoDictionary
@@ -47,12 +54,32 @@ struct SettingsView: View {
                     }
                 }
 
+                Section("播放") {
+                    Picker("音质", selection: $audioLevel) {
+                        Text("标准").tag("standard")
+                        Text("较高").tag("higher")
+                        Text("极高").tag("exhigh")
+                    }
+                }
+
+                Section("存储") {
+                    LabeledContent("音频缓存", value: cacheText)
+                    Button("清除缓存", role: .destructive) {
+                        AudioCache.clear()
+                        cacheSize = AudioCache.totalSize()
+                    }
+                    .disabled(cacheSize == 0)
+                }
+
                 Section("关于") {
                     LabeledContent("版本", value: appVersion)
-                    LabeledContent("阶段", value: "M4 播放与缓存")
+                    LabeledContent("阶段", value: "M5 歌词与设置")
                 }
             }
             .navigationTitle("设置")
+            .onAppear {
+                cacheSize = AudioCache.totalSize()
+            }
         }
     }
 }

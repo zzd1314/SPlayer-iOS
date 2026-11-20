@@ -16,4 +16,12 @@ enum AppSettings {
             UserDefaults.standard.set(newValue, forKey: baseURLKey)
         }
     }
+
+    private static let audioLevelKey = "audioLevel"
+
+    /// 音质：standard / higher / exhigh（Pro 上限）
+    static var audioLevel: String {
+        get { UserDefaults.standard.string(forKey: audioLevelKey) ?? "exhigh" }
+        set { UserDefaults.standard.set(newValue, forKey: audioLevelKey) }
+    }
 }
