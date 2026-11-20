@@ -5,6 +5,8 @@ struct LyricsView: View {
     @EnvironmentObject private var player: PlayerStore
     /// 宽屏分栏布局下，将“自动”对齐改为左对齐
     var forceLeadingAlignment = false
+    /// 宽屏布局使用白色高亮（桌面端样式），未唱行按透明度淡出
+    var plainHighlight = false
 
     @AppStorage("showTranslation") private var showTranslation = true
     @AppStorage("showRomanization") private var showRomanization = false
@@ -98,6 +100,10 @@ struct LyricsView: View {
         let isCurrent = index == line.id
         let isPassed = index.map { line.id < $0 } ?? false
         let baseAlpha = isPassed ? max(inactiveAlpha - 0.18, 0.12) : inactiveAlpha
+        let highlightColor: Color = plainHighlight ? .white : accent
+        let idleColor: Color = plainHighlight
+            ? Color.white.opacity(max(baseAlpha - 0.08, 0.1))
+            : Color.white.opacity(baseAlpha)
 
         return VStack(alignment: horizontalAlignment, spacing: 4) {
             if isCurrent, let words = line.words, !words.isEmpty {
@@ -114,11 +120,11 @@ struct LyricsView: View {
                             weight: isCurrent ? .semibold : .regular
                         )
                     )
-                    .foregroundStyle(isCurrent ? accent : Color.white.opacity(baseAlpha))
+                    .foregroundStyle(isCurrent ? highlightColor : idleColor)
                     .multilineTextAlignment(textAlignment)
                     .lineSpacing(3)
                     .fixedSize(horizontal: false, vertical: true)
-                    .shadow(color: .black.opacity(isCurrent ? 0.18 : 0), radius: 6, y: 2)
+                    .shadow(color: .black.opacity(isCurrent ? (plainHighlight ? 0.3 : 0.18) : 0), radius: 6, y: 2)
             }
 
             if showRomanization, let romanization = line.romanization, !romanization.isEmpty {

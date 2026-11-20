@@ -32,6 +32,8 @@ final class PlayerStore: ObservableObject {
     @Published private(set) var likedSongIds: Set<Int> = []
     /// 当前播放速度（0.5x ~ 2.0x）
     @Published private(set) var playbackRate: Float = 1.0
+    /// 播放音量（0 ~ 1），仅影响本 App，不改变系统音量
+    @Published private(set) var volume: Float = 1.0
     /// 睡眠定时结束时间（nil 表示未开启）
     @Published private(set) var sleepTimerEndDate: Date?
     /// 睡眠定时剩余秒数
@@ -64,6 +66,9 @@ final class PlayerStore: ObservableObject {
         isShuffleEnabled = UserDefaults.standard.bool(forKey: "shuffleEnabled")
         playbackRate = Float(AppSettings.playbackRate)
         player.defaultRate = playbackRate
+        let savedVolume = UserDefaults.standard.object(forKey: "playerVolume") as? Double ?? 1
+        volume = Float(savedVolume)
+        player.volume = volume
         if let data = UserDefaults.standard.data(forKey: "recentSongs"),
            let saved = try? JSONDecoder().decode([Song].self, from: data) {
             recentSongs = saved
@@ -244,6 +249,14 @@ final class PlayerStore: ObservableObject {
             player.rate = rate
         }
         updateNowPlaying()
+    }
+
+    /// 音量：只调节 App 内播放音量，不影响系统音量
+    func setVolume(_ value: Float) {
+        let clamped = min(max(value, 0), 1)
+        volume = clamped
+        player.volume = clamped
+        UserDefaults.standard.set(Double(clamped), forKey: "playerVolume")
     }
 
     /// 睡眠定时：指定分钟后自动暂停
