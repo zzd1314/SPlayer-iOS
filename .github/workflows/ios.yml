@@ -13,6 +13,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # 需要完整历史与 tag，用来生成"本次更新内容"
+          fetch-depth: 0
 
       - name: Install Rust iOS targets
         run: rustup target add aarch64-apple-ios aarch64-apple-ios-sim
@@ -129,6 +132,29 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+      - name: Prepare release notes
+        if: success()
+        run: |
+          set -euo pipefail
+          VERSION=$(sed -n 's/.*MARKETING_VERSION: *"\([0-9][0-9.]*\)".*/\1/p' project.yml | head -1)
+          BUILD=$(sed -n 's/.*CURRENT_PROJECT_VERSION: *"\([0-9]*\)".*/\1/p' project.yml | head -1)
+          PREV=$(git describe --tags --abbrev=0 --match 'v[0-9]*' 2>/dev/null || true)
+          {
+            echo "## v${VERSION}（构建 ${BUILD}）"
+            echo ""
+            if [ -n "$PREV" ]; then
+              git log "${PREV}..HEAD" --no-merges --pretty=format:"- %s" || true
+            fi
+          } > release-notes.md
+          if [ "$(grep -c '^- ' release-notes.md || true)" -eq 0 ]; then
+            echo "- $(git log -1 --pretty=format:'%s')" >> release-notes.md
+          fi
+          {
+            echo ""
+            echo "构建时间：$(date -u '+%Y-%m-%d %H:%M UTC') · 提交 ${GITHUB_SHA:0:7}"
+          } >> release-notes.md
+          cat release-notes.md
+
       - name: Publish GitHub Release
         if: success()
         env:
@@ -137,10 +163,12 @@ jobs:
           set -euo pipefail
           VERSION=$(sed -n 's/.*MARKETING_VERSION: *"\([0-9][0-9.]*\)".*/\1/p' project.yml | head -1)
           TAG="v${VERSION}"
-          if ! gh release view "$TAG" >/dev/null 2>&1; then
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release edit "$TAG" --notes-file release-notes.md
+          else
             gh release create "$TAG" \
               --title "SPlayer-Next iOS ${TAG}" \
-              --notes "自动构建，提交 ${GITHUB_SHA}" \
+              --notes-file release-notes.md \
               --latest
           fi
           gh release upload "$TAG" SPlayer-iOS-unsigned.ipa --clobber

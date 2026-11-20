@@ -1088,7 +1088,17 @@ private struct UpdateReleaseView: View {
         return body
             .components(separatedBy: .newlines)
             .map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty }
+            .filter { !$0.isEmpty && $0 != "---" && !$0.hasPrefix("```") }
+            .compactMap { line -> String? in
+                // Release 说明是 Markdown，弹窗里按纯文本展示
+                var text = line
+                while text.hasPrefix("#") { text.removeFirst() }
+                text = text.trimmingCharacters(in: .whitespaces)
+                if let prefix = ["- ", "* "].first(where: { text.hasPrefix($0) }) {
+                    text = "• " + String(text.dropFirst(prefix.count))
+                }
+                return text.isEmpty ? nil : text
+            }
     }
 
     private var publishedText: String? {
