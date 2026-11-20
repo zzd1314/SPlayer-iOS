@@ -63,6 +63,47 @@ struct PersonalFMResponse: Decodable {
     let data: [Song]?
 }
 
+/// 歌单分类（/playlist/catlist）
+struct PlaylistCatlistResponse: Decodable {
+    struct SubCategory: Decodable {
+        let name: String
+    }
+
+    struct Category: Decodable {
+        let name: String
+        let subs: [SubCategory]?
+    }
+
+    let code: Int
+    let sub: [SubCategory]?
+    let categories: [Category]?
+}
+
+/// 歌单广场（/top/playlist）
+struct TopPlaylistsResponse: Decodable {
+    let code: Int
+    let playlists: [Playlist]?
+}
+
+/// 新歌速递（/personalized/newsong）
+struct NewSongsResponse: Decodable {
+    struct Item: Decodable {
+        let id: Int
+        let name: String
+        let picUrl: String?
+        let song: Song?
+    }
+
+    let code: Int
+    let result: [Item]?
+}
+
+/// 新碟上架（/album/newest）
+struct NewAlbumsResponse: Decodable {
+    let code: Int
+    let albums: [AlbumSummary]?
+}
+
 extension NeteaseAPI {
     /// 推荐歌单
     func personalizedPlaylists(limit: Int = 12, cookie: String?) async throws -> [Playlist] {
@@ -155,6 +196,77 @@ extension NeteaseAPI {
             throw APIError.business(code: response.code, message: "获取私人 FM 失败")
         }
         return response.data ?? []
+    }
+
+    /// 歌单广场分类
+    func playlistCategories(cookie: String?) async throws -> [String] {
+        let response: PlaylistCatlistResponse = try await get("/playlist/catlist", cookie: cookie)
+        guard response.code == 200 else {
+            throw APIError.business(code: response.code, message: "获取歌单分类失败")
+        }
+
+        var names: [String] = []
+        var seen = Set<String>()
+        for item in response.sub ?? [] where !item.name.isEmpty && !seen.contains(item.name) {
+            seen.insert(item.name)
+            names.append(item.name)
+        }
+        for category in response.categories ?? [] {
+            for item in category.subs ?? [] where !item.name.isEmpty && !seen.contains(item.name) {
+                seen.insert(item.name)
+                names.append(item.name)
+            }
+        }
+        return names
+    }
+
+    /// 歌单广场列表
+    func topPlaylists(
+        category: String = "全部",
+        limit: Int = 30,
+        offset: Int = 0,
+        cookie: String?
+    ) async throws -> [Playlist] {
+        let response: TopPlaylistsResponse = try await get(
+            "/top/playlist",
+            query: [
+                "cat": category,
+                "limit": String(limit),
+                "offset": String(offset),
+                "order": "hot"
+            ],
+            cookie: cookie
+        )
+        guard response.code == 200 else {
+            throw APIError.business(code: response.code, message: "获取歌单广场失败")
+        }
+        return response.playlists ?? []
+    }
+
+    /// 新歌速递
+    func newSongs(limit: Int = 30, cookie: String?) async throws -> [Song] {
+        let response: NewSongsResponse = try await get(
+            "/personalized/newsong",
+            query: ["limit": String(limit)],
+            cookie: cookie
+        )
+        guard response.code == 200 else {
+            throw APIError.business(code: response.code, message: "获取新歌速递失败")
+        }
+        return (response.result ?? []).compactMap(\.song)
+    }
+
+    /// 新碟上架
+    func newAlbums(limit: Int = 30, cookie: String?) async throws -> [AlbumSummary] {
+        let response: NewAlbumsResponse = try await get(
+            "/album/newest",
+            query: ["limit": String(limit)],
+            cookie: cookie
+        )
+        guard response.code == 200 else {
+            throw APIError.business(code: response.code, message: "获取新碟上架失败")
+        }
+        return response.albums ?? []
     }
 
     /// 收藏 / 取消收藏

@@ -20,6 +20,7 @@ struct HomeView: View {
                 VStack(alignment: .leading, spacing: 26) {
                     greeting
                     fmEntry
+                    discoverSection
 
                     if !dailySongs.isEmpty {
                         dailySection
@@ -117,6 +118,68 @@ struct HomeView: View {
             }
             .padding(12)
             .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: - 发现入口
+
+    private var discoverSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("发现", systemImage: "sparkles")
+                .font(.title3.weight(.semibold))
+
+            LazyVGrid(
+                columns: [
+                    GridItem(.flexible(), spacing: 12),
+                    GridItem(.flexible(), spacing: 12)
+                ],
+                spacing: 12
+            ) {
+                discoverCard(title: "排行榜", icon: "chart.bar.fill", tint: .orange) {
+                    RankListView()
+                }
+                discoverCard(title: "歌单广场", icon: "square.grid.2x2.fill", tint: .blue) {
+                    PlaylistSquareView()
+                }
+                discoverCard(title: "新歌速递", icon: "music.note.list", tint: .green) {
+                    NewSongsView()
+                }
+                discoverCard(title: "新碟上架", icon: "opticaldisc.fill", tint: .purple) {
+                    NewAlbumsView()
+                }
+            }
+        }
+    }
+
+    private func discoverCard<Destination: View>(
+        title: String,
+        icon: String,
+        tint: Color,
+        @ViewBuilder destination: () -> Destination
+    ) -> some View {
+        NavigationLink {
+            destination()
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: icon)
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(tint)
+                    .frame(width: 36, height: 36)
+                    .background(
+                        tint.opacity(0.14),
+                        in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    )
+
+                Text(title)
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+
+                Spacer(minLength: 0)
+            }
+            .padding(10)
+            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
         .buttonStyle(.plain)
     }
