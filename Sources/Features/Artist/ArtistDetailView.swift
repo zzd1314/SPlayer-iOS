@@ -10,6 +10,9 @@ struct ArtistDetailView: View {
     @State private var detail: ArtistSummary?
     @State private var hotSongs: [Song] = []
     @State private var albums: [AlbumSummary] = []
+    @State private var mvs: [MVSummary] = []
+    @State private var briefDesc: String?
+    @State private var introduction: [ArtistDescResponse.Paragraph] = []
     @State private var isLoading = false
     @State private var loadedOnce = false
     @State private var errorText: String?
@@ -26,6 +29,23 @@ struct ArtistDetailView: View {
             Section {
                 header
                     .listRowBackground(Color.clear)
+            }
+
+            if hasDescription {
+                Section("介绍") {
+                    NavigationLink {
+                        ArtistDescriptionView(
+                            name: info.name,
+                            brief: briefDesc,
+                            paragraphs: introduction
+                        )
+                    } label: {
+                        Text(descriptionPreview)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(3)
+                    }
+                }
             }
 
             if !hotSongs.isEmpty {
@@ -65,7 +85,30 @@ struct ArtistDetailView: View {
                 }
             }
 
-            if hotSongs.isEmpty, albums.isEmpty, loadedOnce, errorText == nil, !isLoading {
+            if !mvs.isEmpty {
+                Section {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(alignment: .top, spacing: 12) {
+                            ForEach(mvs) { mv in
+                                NavigationLink {
+                                    MVPlayerView(mv: mv)
+                                } label: {
+                                    ArtistMVCard(mv: mv)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .padding(.horizontal, 2)
+                        .padding(.vertical, 4)
+                    }
+                    .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
+                } header: {
+                    Text("MV")
+                }
+            }
+
+            if hotSongs.isEmpty, albums.isEmpty, mvs.isEmpty, !hasDescription,
+               loadedOnce, errorText == nil, !isLoading {
                 Text("暂无内容")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
@@ -175,6 +218,20 @@ struct ArtistDetailView: View {
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
+    private var hasDescription: Bool {
+        if let briefDesc, !briefDesc.isEmpty {
+            return true
+        }
+        return introduction.contains { !($0.txt ?? "").isEmpty }
+    }
+
+    private var descriptionPreview: String {
+        if let briefDesc, !briefDesc.isEmpty {
+            return briefDesc
+        }
+        return introduction.first(where: { !($0.txt ?? "").isEmpty })?.txt ?? ""
+    }
+
     private func play(_ song: Song) {
         Task {
             if AppSettings.songListPlayBehavior == "current" {
@@ -207,6 +264,13 @@ struct ArtistDetailView: View {
 
         albums = (try? await api.artistAlbums(id: artist.id, cookie: cookie)) ?? []
 
+        if let desc = try? await api.artistDescription(id: artist.id, cookie: cookie) {
+            briefDesc = desc.brief
+            introduction = desc.introduction
+        }
+
+        mvs = (try? await api.artistMVs(id: artist.id, cookie: cookie)) ?? []
+
         if let cookie, let ids = try? await api.subscribedArtistIDs(cookie: cookie) {
             isFollowed = ids.contains(artist.id)
         }
@@ -225,6 +289,55 @@ struct ArtistDetailView: View {
             isFollowed = !target
             actionError = error.localizedDescription
         }
+    }
+}
+
+private struct ArtistMVCard: View {
+    let mv: MVSummary
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            AsyncImage(url: mv.cover.flatMap { URL(string: $0) }) { phase in
+                if let image = phase.image {
+                    image
+                        .resizable()
+                        .scaledToFill()
+                } else {
+                    ZStack {
+                        Color(.tertiarySystemFill)
+                        Image(systemName: "music.note")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .frame(width: 160, height: 90)
+            .overlay {
+                Image(systemName: "play.circle.fill")
+                    .font(.system(size: 30))
+                    .foregroundStyle(.white.opacity(0.9))
+                    .shadow(radius: 4)
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+            Text(mv.name)
+                .font(.caption.weight(.medium))
+                .lineLimit(2)
+                .multilineTextAlignment(.leading)
+
+            Text(playCountText)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
+        .frame(width: 160, alignment: .leading)
+    }
+
+    private var playCountText: String {
+        guard let count = mv.playCount, count > 0 else { return "MV" }
+        if count >= 10000 {
+            return String(format: "%.1f 万次播放", Double(count) / 10000)
+        }
+        return "\(count) 次播放"
     }
 }
 

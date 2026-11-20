@@ -45,6 +45,24 @@ struct ArtistAlbumsResponse: Decodable {
     let hotAlbums: [AlbumSummary]?
 }
 
+/// 歌手介绍（/artist/desc）
+struct ArtistDescResponse: Decodable {
+    struct Paragraph: Decodable {
+        let ti: String?
+        let txt: String?
+    }
+
+    let code: Int
+    let briefDesc: String?
+    let introduction: [Paragraph]?
+}
+
+/// 歌手 MV（/artist/mv）
+struct ArtistMVResponse: Decodable {
+    let code: Int
+    let mvs: [MVSummary]?
+}
+
 /// 专辑详情（/album）
 struct AlbumDetailResponse: Decodable {
     let code: Int
@@ -208,6 +226,40 @@ extension NeteaseAPI {
                 message: response.message ?? response.msg ?? "专辑收藏操作失败"
             )
         }
+    }
+
+    /// 歌手介绍
+    func artistDescription(
+        id: Int,
+        cookie: String? = nil
+    ) async throws -> (brief: String?, introduction: [ArtistDescResponse.Paragraph]) {
+        let response: ArtistDescResponse = try await get(
+            "/artist/desc",
+            query: ["id": String(id)],
+            cookie: cookie
+        )
+        guard response.code == 200 else {
+            throw APIError.business(code: response.code, message: "获取歌手介绍失败")
+        }
+        return (response.briefDesc, response.introduction ?? [])
+    }
+
+    /// 歌手 MV
+    func artistMVs(
+        id: Int,
+        limit: Int = 20,
+        offset: Int = 0,
+        cookie: String? = nil
+    ) async throws -> [MVSummary] {
+        let response: ArtistMVResponse = try await get(
+            "/artist/mv",
+            query: ["id": String(id), "limit": String(limit), "offset": String(offset)],
+            cookie: cookie
+        )
+        guard response.code == 200 else {
+            throw APIError.business(code: response.code, message: "获取歌手 MV 失败")
+        }
+        return response.mvs ?? []
     }
 
     /// 热搜榜
