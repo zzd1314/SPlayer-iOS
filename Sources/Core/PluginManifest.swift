@@ -88,9 +88,9 @@ struct PluginManifest {
             guard line.hasPrefix("@") else { continue }
             let body = line.dropFirst()
             let parts = body.split(
-                whereSeparator: { $0 == " " || $0 == "\t" },
                 maxSplits: 1,
-                omittingEmptySubsequences: true
+                omittingEmptySubsequences: true,
+                whereSeparator: { $0 == " " || $0 == "\t" }
             )
             guard let keyPart = parts.first else { continue }
 
@@ -99,10 +99,10 @@ struct PluginManifest {
                 .lowercased()
             guard !key.isEmpty else { continue }
 
-            var value = parts.count > 1 ? String(parts[1]).trimmingCharacters(in: .whitespaces) : ""
+            var value = parts.count > 1 ? String(parts[1]).trimmingCharacters(in: CharacterSet.whitespaces) : ""
             if value.hasSuffix("*/") {
                 value.removeLast(2)
-                value = value.trimmingCharacters(in: .whitespaces)
+                value = value.trimmingCharacters(in: CharacterSet.whitespaces)
             }
             if metadata[key] == nil {
                 metadata[key] = value
