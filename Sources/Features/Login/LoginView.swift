@@ -279,13 +279,13 @@ struct LoginView: View {
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
-            if let formError {
-                Text(formError)
+            if let errorText = formError {
+                Text(errorText)
                     .font(.footnote)
                     .foregroundStyle(.red)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
-                if formError.contains("风险") || formError.contains("安全") {
+                if errorText.contains("风险") || errorText.contains("安全") {
                     HStack(spacing: 14) {
                         if phoneAuthMode == .captcha {
                             Button("改用密码登录") {
