@@ -66,6 +66,15 @@ struct Song: Codable, Identifiable, Hashable {
         case id, name, ar, artists, al, album, dt, duration
     }
 
+    init(id: Int, name: String, artists: [Artist], albumName: String?, albumPicUrl: String?, duration: Int) {
+        self.id = id
+        self.name = name
+        self.artists = artists
+        self.albumName = albumName
+        self.albumPicUrl = albumPicUrl
+        self.duration = duration
+    }
+
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(Int.self, forKey: .id)

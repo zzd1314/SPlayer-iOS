@@ -213,6 +213,15 @@ struct LibraryView: View {
             ) {
                 CloudMusicView()
             }
+
+            quickLink(
+                title: "本地音乐",
+                subtitle: "导入本地歌曲",
+                systemImage: "folder.fill",
+                color: .orange
+            ) {
+                LocalMusicView()
+            }
         }
     }
 

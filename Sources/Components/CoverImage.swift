@@ -1,6 +1,7 @@
 import SwiftUI
+import UIKit
 
-/// 网络封面图（带占位与失败态）
+/// 网络封面图（带占位与失败态），支持 `local://<songId>` 本地封面
 struct CoverImage: View {
     let urlString: String?
     var size: CGFloat = 52
@@ -8,7 +9,14 @@ struct CoverImage: View {
 
     var body: some View {
         Group {
-            if let urlString, let url = URL(string: urlString) {
+            if let urlString, urlString.hasPrefix("local://"),
+               let songId = Int(urlString.dropFirst("local://".count)),
+               let fileURL = LocalMusicStore.coverURL(for: songId),
+               let image = UIImage(contentsOfFile: fileURL.path) {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+            } else if let urlString, let url = URL(string: urlString) {
                 AsyncImage(url: url) { phase in
                     if let image = phase.image {
                         image

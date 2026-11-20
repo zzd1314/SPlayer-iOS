@@ -344,6 +344,9 @@ final class PlayerStore: ObservableObject {
 
     /// 收藏 / 取消收藏指定歌曲（失败时恢复本地状态）
     func toggleLike(songId: Int) async throws {
+        guard songId > 0 else {
+            throw APIError.business(code: -1, message: "本地歌曲不支持收藏")
+        }
         guard let cookie, !cookie.isEmpty else {
             throw APIError.business(code: -1, message: "请先登录")
         }
@@ -433,19 +436,23 @@ final class PlayerStore: ObservableObject {
         syncNowPlaying()
 
         do {
-            let remoteURL = try await NeteaseAPI().songURL(
-                id: song.id,
-                level: AppSettings.audioLevel,
-                cookie: cookie
-            )
-
             let item: AVPlayerItem
-            if let localURL = AudioCache.cachedURL(songId: song.id) {
+            if let localURL = LocalMusicStore.url(for: song.id) {
                 item = AVPlayerItem(url: localURL)
             } else {
-                item = AVPlayerItem(url: remoteURL)
-                if AppSettings.enableSongCache {
-                    cacheInBackground(url: remoteURL, songId: song.id)
+                let remoteURL = try await NeteaseAPI().songURL(
+                    id: song.id,
+                    level: AppSettings.audioLevel,
+                    cookie: cookie
+                )
+
+                if let cachedURL = AudioCache.cachedURL(songId: song.id) {
+                    item = AVPlayerItem(url: cachedURL)
+                } else {
+                    item = AVPlayerItem(url: remoteURL)
+                    if AppSettings.enableSongCache {
+                        cacheInBackground(url: remoteURL, songId: song.id)
+                    }
                 }
             }
 
@@ -476,6 +483,12 @@ final class PlayerStore: ObservableObject {
 
     private func loadLyrics(for song: Song) {
         lyricTask?.cancel()
+        guard !LocalMusicStore.isLocal(song.id) else {
+            lyricLines = []
+            isLoadingLyrics = false
+            lyricError = "本地歌曲暂无歌词"
+            return
+        }
         isLoadingLyrics = true
         let cookie = self.cookie
 
@@ -501,7 +514,8 @@ final class PlayerStore: ObservableObject {
         let nextIndex = currentIndex + 1
         guard queue.indices.contains(nextIndex) else { return }
         let song = queue[nextIndex]
-        guard AudioCache.cachedURL(songId: song.id) == nil,
+        guard !LocalMusicStore.isLocal(song.id),
+              AudioCache.cachedURL(songId: song.id) == nil,
               !preloadingSongs.contains(song.id)
         else { return }
 

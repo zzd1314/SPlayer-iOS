@@ -27,6 +27,7 @@ SPlayer-Next（[SPlayer-Dev/SPlayer-Next](https://github.com/SPlayer-Dev/SPlayer
 - [x] M16 MV 播放 / 听歌排行 / 我的云盘
 - [x] M17 倍速播放 / 睡眠定时 / 缓存管理
 - [x] M18 逐字歌词（YRC）/ 罗马音 / 歌词偏移
+- [x] M19 本地音乐导入 / 元数据解析 / 本地播放
 
 ## 构建
 
