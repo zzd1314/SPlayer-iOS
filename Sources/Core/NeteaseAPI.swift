@@ -17,7 +17,7 @@ enum APIError: LocalizedError {
             return "网络错误（HTTP \(code)）"
         case .business(let code, let message):
             if APIError.riskControlCodes.contains(code) {
-                return "登录触发网易云安全验证，请稍后重试或改用扫码登录"
+                return "登录触发网易云安全验证，请改用密码登录或扫码登录"
             }
             return message ?? "接口错误（\(code)）"
         case .invalidResponse:
@@ -137,11 +137,11 @@ struct NeteaseAPI {
         case .http(400), .http(403):
             return .business(
                 code: 400,
-                message: "\(action)请求被服务端拒绝，可能触发了网易云安全验证。请稍后重试或改用扫码登录"
+                message: "\(action)请求被服务端拒绝，可能触发了网易云安全验证。请改用密码登录或扫码登录"
             )
         case .business(let code, let message):
             if APIError.riskControlCodes.contains(code) {
-                return .business(code: code, message: "\(action)触发网易云安全验证，请稍后重试或改用扫码登录")
+                return .business(code: code, message: "\(action)触发网易云安全验证，请改用密码登录或扫码登录")
             }
             return .business(code: code, message: message)
         default:
@@ -320,22 +320,36 @@ extension NeteaseAPI {
             throw Self.authError(error, action: "发送验证码")
         }
         guard response.code == 200 else {
-            throw APIError.business(
-                code: response.code,
-                message: response.message ?? response.msg ?? "验证码发送失败"
-            )
+            let text = response.message ?? response.msg ?? "验证码发送失败"
+            if text.contains("风险") || text.contains("安全") {
+                throw APIError.business(code: response.code, message: "\(text)。请改用密码登录或扫码登录")
+            }
+            throw APIError.business(code: response.code, message: text)
         }
     }
 
     /// 手机号 + 验证码登录
     func loginCellphone(phone: String, captcha: String, countryCode: String) async throws -> String {
+        try await cellphoneLogin(fields: [
+            "phone": phone,
+            "captcha": captcha,
+            "countrycode": countryCode
+        ])
+    }
+
+    /// 手机号 + 密码登录（验证码登录被风控拦截时的替代方式）
+    func loginCellphone(phone: String, password: String, countryCode: String) async throws -> String {
+        try await cellphoneLogin(fields: [
+            "phone": phone,
+            "password": password,
+            "countrycode": countryCode
+        ])
+    }
+
+    private func cellphoneLogin(fields: [String: String]) async throws -> String {
         let response: LoginResponse
         do {
-            response = try await post("/login/cellphone", fields: [
-                "phone": phone,
-                "captcha": captcha,
-                "countrycode": countryCode
-            ])
+            response = try await post("/login/cellphone", fields: fields)
         } catch let error as APIError {
             throw Self.authError(error, action: "登录")
         }
@@ -382,8 +396,8 @@ extension NeteaseAPI {
 
     /// 登录失败的文案：风控类错误给出替代方案
     private static func loginMessage(code: Int, text: String) -> String {
-        if APIError.riskControlCodes.contains(code) {
-            return "登录触发网易云安全验证，请稍后重试或改用扫码登录"
+        if APIError.riskControlCodes.contains(code) || text.contains("安全风险") || text.contains("风险") {
+            return "\(text)。请改用密码登录或扫码登录"
         }
         return text
     }

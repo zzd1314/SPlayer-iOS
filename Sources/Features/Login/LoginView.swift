@@ -25,6 +25,21 @@ struct LoginView: View {
 
     @State private var mode: LoginMode = .qr
 
+    /// 手机号登录方式
+    private enum PhoneAuthMode: String, CaseIterable, Identifiable {
+        case captcha
+        case password
+
+        var id: String { rawValue }
+
+        var title: String {
+            switch self {
+            case .captcha: return "验证码"
+            case .password: return "密码"
+            }
+        }
+    }
+
     // 扫码
     @State private var qrImage: UIImage?
     @State private var statusText = ""
@@ -40,6 +55,8 @@ struct LoginView: View {
     @State private var phone = ""
     @State private var email = ""
     @State private var captcha = ""
+    @State private var password = ""
+    @State private var phoneAuthMode: PhoneAuthMode = .captcha
     @State private var countryCode = "86"
     @State private var countdown = 0
     @State private var isSendingCode = false
@@ -113,6 +130,10 @@ struct LoginView: View {
                 pollTask = nil
                 isPolling = false
             }
+        }
+        .onChange(of: phoneAuthMode) { _, _ in
+            formError = nil
+            formMessage = nil
         }
         .onChange(of: scenePhase) { _, phase in
             // 回到前台后若轮询已停止，重新获取二维码，避免出现“有码但扫不动”
@@ -235,7 +256,22 @@ struct LoginView: View {
                     .background(fieldBackground)
             }
 
-            captchaRow
+            Picker("手机号登录方式", selection: $phoneAuthMode) {
+                ForEach(PhoneAuthMode.allCases) { item in
+                    Text(item.title).tag(item)
+                }
+            }
+            .pickerStyle(.segmented)
+
+            if phoneAuthMode == .captcha {
+                captchaRow
+            } else {
+                SecureField("密码", text: $password)
+                    .textContentType(.password)
+                    .padding(.horizontal, 14)
+                    .frame(height: 50)
+                    .background(fieldBackground)
+            }
 
             if let formMessage {
                 Text(formMessage)
@@ -248,6 +284,23 @@ struct LoginView: View {
                     .font(.footnote)
                     .foregroundStyle(.red)
                     .frame(maxWidth: .infinity, alignment: .leading)
+
+                if formError.contains("风险") || formError.contains("安全") {
+                    HStack(spacing: 14) {
+                        if phoneAuthMode == .captcha {
+                            Button("改用密码登录") {
+                                phoneAuthMode = .password
+                                formError = nil
+                            }
+                        }
+                        Button("改用扫码登录") {
+                            mode = .qr
+                            formError = nil
+                        }
+                    }
+                    .font(.footnote.weight(.medium))
+                    .foregroundStyle(Color.splayerAccent)
+                }
             }
 
             loginButton
@@ -380,18 +433,21 @@ struct LoginView: View {
     private var canSendCode: Bool {
         guard countdown == 0, !isSendingCode else { return false }
         switch mode {
-        case .phone: return isPhoneValid
+        case .phone: return isPhoneValid && phoneAuthMode == .captcha
         case .email: return isEmailValid
         case .qr: return false
         }
     }
 
     private var canSubmit: Bool {
-        guard captcha.count >= 4 else { return false }
         switch mode {
-        case .phone: return isPhoneValid
-        case .email: return isEmailValid
-        case .qr: return false
+        case .phone:
+            guard isPhoneValid else { return false }
+            return phoneAuthMode == .captcha ? captcha.count >= 4 : password.count >= 6
+        case .email:
+            return isEmailValid && captcha.count >= 4
+        case .qr:
+            return false
         }
     }
 
@@ -550,11 +606,19 @@ struct LoginView: View {
         do {
             switch mode {
             case .phone:
-                try await auth.login(
-                    phone: trimmedPhone,
-                    captcha: captcha.trimmingCharacters(in: .whitespacesAndNewlines),
-                    countryCode: countryCode
-                )
+                if phoneAuthMode == .captcha {
+                    try await auth.login(
+                        phone: trimmedPhone,
+                        captcha: captcha.trimmingCharacters(in: .whitespacesAndNewlines),
+                        countryCode: countryCode
+                    )
+                } else {
+                    try await auth.login(
+                        phone: trimmedPhone,
+                        password: password,
+                        countryCode: countryCode
+                    )
+                }
             case .email:
                 try await auth.login(
                     email: trimmedEmail,

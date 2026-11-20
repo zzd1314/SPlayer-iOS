@@ -44,6 +44,16 @@ final class AuthStore: ObservableObject {
         await signIn(cookie: cookie)
     }
 
+    /// 手机号密码登录（验证码登录被风控拦截时的替代方式）
+    func login(phone: String, password: String, countryCode: String) async throws {
+        let cookie = try await NeteaseAPI().loginCellphone(
+            phone: phone,
+            password: password,
+            countryCode: countryCode
+        )
+        await signIn(cookie: cookie)
+    }
+
     func signOut() {
         cookie = nil
         profile = nil
