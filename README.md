@@ -39,6 +39,14 @@ SPlayer-Next（[SPlayer-Dev/SPlayer-Next](https://github.com/SPlayer-Dev/SPlayer
 - [x] M28 云村动态：动态流、图片、分享歌曲播放、点赞
 - [x] M29 下一首播放、云盘歌曲删除
 
+## 平台差异（iOS 限制）
+
+以下桌面功能依赖桌面端播放器 / 系统能力，iOS 端未移植或以系统能力替代：
+
+- 均衡器、音量均衡、WASAPI 独占模式：iOS 使用 `AVPlayer` 播放，无法在不重建整套播放/缓存/后台链路的前提下接入 `AVAudioEngine` 音效处理
+- 桌面歌词窗口：iOS 以锁屏控制中心歌词、歌词页与小组件替代
+- 听歌识曲：桌面端依赖 AFP 指纹库（afp.js / afp.wasm）本地计算指纹，暂未移植
+
 ## 构建
 
 推送即触发 `.github/workflows/ios.yml`（macos-15）：XcodeGen 生成工程 → xcodebuild 未签名构建 → 打包 IPA → Actions Artifact 下载（保留 30 天）。
