@@ -58,6 +58,40 @@ enum AudioCache {
         }
     }
 
+    /// 缓存条目
+    struct Entry: Identifiable {
+        let songId: Int
+        let size: Int64
+        let modifiedAt: Date
+
+        var id: Int { songId }
+    }
+
+    /// 列出全部缓存文件（按修改时间倒序）
+    static func entries() -> [Entry] {
+        let files = (try? FileManager.default.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: [.fileSizeKey, .contentModificationDateKey]
+        )) ?? []
+
+        return files.compactMap { url -> Entry? in
+            guard let songId = Int(url.deletingPathExtension().lastPathComponent) else { return nil }
+            let values = try? url.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
+            return Entry(
+                songId: songId,
+                size: Int64(values?.fileSize ?? 0),
+                modifiedAt: values?.contentModificationDate ?? .distantPast
+            )
+        }
+        .sorted { $0.modifiedAt > $1.modifiedAt }
+    }
+
+    /// 删除单首缓存
+    static func remove(songId: Int) {
+        let url = directory.appendingPathComponent("\(songId).mp3")
+        try? FileManager.default.removeItem(at: url)
+    }
+
     static func clear() {
         let files = (try? FileManager.default.contentsOfDirectory(
             at: directory,

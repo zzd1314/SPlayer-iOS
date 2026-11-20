@@ -161,10 +161,19 @@ private struct GeneralSettingsView: View {
 // MARK: - 播放设置
 
 private struct PlayerSettingsView: View {
+    @EnvironmentObject private var player: PlayerStore
+
     @AppStorage("audioLevel") private var audioLevel = "exhigh"
     @AppStorage("preloadNextTrack") private var preloadNextTrack = false
     @AppStorage("keepScreenAwake") private var keepScreenAwake = true
     @AppStorage("timeFormat") private var timeFormat = TimeFormatMode.currentTotal.rawValue
+
+    private var playbackRateBinding: Binding<Double> {
+        Binding(
+            get: { Double(player.playbackRate) },
+            set: { player.setPlaybackRate(Float($0)) }
+        )
+    }
 
     var body: some View {
         Form {
@@ -187,6 +196,18 @@ private struct PlayerSettingsView: View {
                 Toggle("播放时保持屏幕常亮", isOn: $keepScreenAwake)
             } footer: {
                 Text("预载会提前缓存下一曲，需要保持「歌曲缓存」开启；屏幕常亮仅在播放页展开且正在播放时生效。")
+            }
+
+            Section {
+                Picker("播放速度", selection: playbackRateBinding) {
+                    ForEach(AppSettings.playbackRateOptions, id: \.self) { value in
+                        Text(AppSettings.playbackRateLabel(value)).tag(value)
+                    }
+                }
+            } header: {
+                Text("播放速度")
+            } footer: {
+                Text("可在播放页的倍速按钮中快速切换；设置对当前播放立即生效。")
             }
 
             Section("时间显示") {
@@ -519,6 +540,12 @@ private struct CacheSettingsView: View {
             }
 
             Section {
+                NavigationLink {
+                    CacheManageView()
+                } label: {
+                    Label("缓存管理", systemImage: "music.note.list")
+                }
+
                 Button("清除缓存", role: .destructive) {
                     showClearConfirm = true
                 }

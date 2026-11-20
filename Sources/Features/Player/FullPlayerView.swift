@@ -14,6 +14,7 @@ struct FullPlayerView: View {
     @State private var showLyrics = false
     @State private var showQueue = false
     @State private var showComments = false
+    @State private var showOptions = false
     @State private var dragTime: TimeInterval?
     @State private var hint: String?
     @State private var hintTask: Task<Void, Never>?
@@ -41,6 +42,10 @@ struct FullPlayerView: View {
             if let song = player.currentSong {
                 CommentsView(songId: song.id, songName: song.name)
             }
+        }
+        .sheet(isPresented: $showOptions) {
+            PlayerOptionsSheet()
+                .presentationDetents([.medium, .large])
         }
         .onAppear {
             updateIdleTimer()
@@ -119,7 +124,7 @@ struct FullPlayerView: View {
 
             Spacer()
 
-            Text(showLyrics ? "歌词" : "正在播放")
+            Text(player.sleepTimerLabel ?? (showLyrics ? "歌词" : "正在播放"))
                 .font(.caption)
                 .foregroundStyle(.white.opacity(0.6))
 
@@ -331,6 +336,17 @@ struct FullPlayerView: View {
                 .padding(.horizontal, 9)
                 .padding(.vertical, 4)
                 .background(.white.opacity(0.12), in: Capsule())
+                .contentShape(Capsule())
+                .onTapGesture { showOptions = true }
+
+            Text(player.playbackRate == 1 ? "1x" : rateLabel)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(player.playbackRate == 1 ? .white.opacity(0.85) : accent)
+                .padding(.horizontal, 9)
+                .padding(.vertical, 4)
+                .background(.white.opacity(0.12), in: Capsule())
+                .contentShape(Capsule())
+                .onTapGesture { showOptions = true }
 
             Spacer()
 
@@ -375,6 +391,10 @@ struct FullPlayerView: View {
 
     private var qualityLabel: String {
         AppSettings.audioLevels.first(where: { $0.value == audioLevel })?.label ?? "极高 (HQ)"
+    }
+
+    private var rateLabel: String {
+        String(format: "%gx", Double(player.playbackRate))
     }
 
     private var emptyState: some View {
@@ -442,6 +462,78 @@ private struct PlayerBackground: View {
             .frame(width: geo.size.width, height: geo.size.height)
         }
         .ignoresSafeArea()
+    }
+}
+
+// MARK: - 播放选项（倍速 / 睡眠定时）
+
+private struct PlayerOptionsSheet: View {
+    @EnvironmentObject private var player: PlayerStore
+    @Environment(\.dismiss) private var dismiss
+
+    private let sleepMinutes = [5, 10, 15, 30, 45, 60]
+
+    private var rateBinding: Binding<Double> {
+        Binding(
+            get: { Double(player.playbackRate) },
+            set: { player.setPlaybackRate(Float($0)) }
+        )
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    Picker("播放速度", selection: rateBinding) {
+                        ForEach(AppSettings.playbackRateOptions, id: \.self) { value in
+                            Text(AppSettings.playbackRateLabel(value)).tag(value)
+                        }
+                    }
+                    .pickerStyle(.inline)
+                    .labelsHidden()
+                } header: {
+                    Text("播放速度")
+                }
+
+                Section {
+                    if let label = player.sleepTimerLabel {
+                        HStack {
+                            Label("当前状态", systemImage: "moon.zzz.fill")
+                            Spacer()
+                            Text(label)
+                                .foregroundStyle(.secondary)
+                        }
+                        Button("关闭睡眠定时", role: .destructive) {
+                            player.cancelSleepTimer()
+                        }
+                    }
+
+                    ForEach(sleepMinutes, id: \.self) { minutes in
+                        Button("\(minutes) 分钟后暂停") {
+                            player.startSleepTimer(minutes: minutes)
+                        }
+                    }
+
+                    Button("播完当前歌曲后暂停") {
+                        player.startSleepAtTrackEnd()
+                    }
+                } header: {
+                    Text("睡眠定时")
+                } footer: {
+                    Text("倒计时结束后自动暂停播放；也可以选择在当前歌曲结束后暂停。")
+                }
+            }
+            .adaptiveListBackground()
+            .navigationTitle("播放选项")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("完成") {
+                        dismiss()
+                    }
+                }
+            }
+        }
     }
 }
 

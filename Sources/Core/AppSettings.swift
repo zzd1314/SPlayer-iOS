@@ -129,6 +129,21 @@ enum AppSettings {
         set { store.set(newValue, forKey: "preloadNextTrack") }
     }
 
+    /// 播放速度（0.5x ~ 2.0x）
+    static var playbackRate: Double {
+        get {
+            let value = doubleValue("playbackRate", 1.0)
+            return value > 0 ? value : 1.0
+        }
+        set { store.set(newValue, forKey: "playbackRate") }
+    }
+
+    static let playbackRateOptions: [Double] = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0]
+
+    static func playbackRateLabel(_ value: Double) -> String {
+        value == 1.0 ? "1.0x（正常）" : String(format: "%gx", value)
+    }
+
     static var keepScreenAwake: Bool {
         get { boolValue("keepScreenAwake", true) }
         set { store.set(newValue, forKey: "keepScreenAwake") }
@@ -236,7 +251,7 @@ enum AppSettings {
 
     private static let allKeys = [
         "apiBaseURL", "audioLevel", "autoPlay", "rememberLastTrack", "showLyricInBar",
-        "searchPlayBehavior", "songListPlayBehavior", "preloadNextTrack", "keepScreenAwake",
+        "searchPlayBehavior", "songListPlayBehavior", "preloadNextTrack", "playbackRate", "keepScreenAwake",
         "timeFormat", "showTranslation", "lyricFontSize", "lyricAlignment", "inactiveAlpha",
         "followCoverColor", "liveActivityEnabled", "themeMode", "themeSource", "customThemeColor",
         "appearanceStyle", "backgroundBlur", "backgroundDim", "backgroundRevision",

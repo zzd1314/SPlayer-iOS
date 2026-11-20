@@ -28,6 +28,14 @@ final class PlayerStore: ObservableObject {
     @Published private(set) var recentSongs: [Song] = []
     /// 我喜欢的音乐（歌曲 id）
     @Published private(set) var likedSongIds: Set<Int> = []
+    /// 当前播放速度（0.5x ~ 2.0x）
+    @Published private(set) var playbackRate: Float = 1.0
+    /// 睡眠定时结束时间（nil 表示未开启）
+    @Published private(set) var sleepTimerEndDate: Date?
+    /// 睡眠定时剩余秒数
+    @Published private(set) var sleepTimerRemaining: TimeInterval = 0
+    /// 播完当前歌曲后暂停
+    @Published private(set) var sleepAfterCurrentTrack = false
 
     /// 登录 Cookie（由 RootView 同步）
     var cookie: String?
@@ -40,6 +48,7 @@ final class PlayerStore: ObservableObject {
     private var failureObserver: NSObjectProtocol?
     private var timeObserver: Any?
     private var lyricTask: Task<Void, Never>?
+    private var sleepTimer: Timer?
     private var lastWidgetReload = Date.distantPast
     private var isRestored = false
     /// 正在预载/缓存中的歌曲，避免重复下载
@@ -51,6 +60,8 @@ final class PlayerStore: ObservableObject {
             repeatMode = mode
         }
         isShuffleEnabled = UserDefaults.standard.bool(forKey: "shuffleEnabled")
+        playbackRate = Float(AppSettings.playbackRate)
+        player.defaultRate = playbackRate
         if let data = UserDefaults.standard.data(forKey: "recentSongs"),
            let saved = try? JSONDecoder().decode([Song].self, from: data) {
             recentSongs = saved
@@ -97,6 +108,7 @@ final class PlayerStore: ObservableObject {
             player.removeTimeObserver(timeObserver)
         }
         lyricTask?.cancel()
+        sleepTimer?.invalidate()
     }
 
     // MARK: - 派生状态
@@ -218,6 +230,73 @@ final class PlayerStore: ObservableObject {
         UserDefaults.standard.set(isShuffleEnabled, forKey: "shuffleEnabled")
     }
 
+    // MARK: - 播放速度 / 睡眠定时
+
+    /// 设置播放速度（立即生效并持久化）
+    func setPlaybackRate(_ rate: Float) {
+        playbackRate = rate
+        AppSettings.playbackRate = Double(rate)
+        player.defaultRate = rate
+        if isPlaying {
+            player.rate = rate
+        }
+        updateNowPlaying()
+    }
+
+    /// 睡眠定时：指定分钟后自动暂停
+    func startSleepTimer(minutes: Int) {
+        guard minutes > 0 else { return }
+        sleepAfterCurrentTrack = false
+        let end = Date().addingTimeInterval(Double(minutes) * 60)
+        sleepTimerEndDate = end
+        sleepTimerRemaining = end.timeIntervalSinceNow
+        scheduleSleepTimer()
+    }
+
+    /// 播完当前歌曲后暂停
+    func startSleepAtTrackEnd() {
+        cancelSleepTimer()
+        sleepAfterCurrentTrack = true
+    }
+
+    func cancelSleepTimer() {
+        sleepTimer?.invalidate()
+        sleepTimer = nil
+        sleepTimerEndDate = nil
+        sleepTimerRemaining = 0
+        sleepAfterCurrentTrack = false
+    }
+
+    /// 睡眠定时状态文案（未开启时为 nil）
+    var sleepTimerLabel: String? {
+        if sleepAfterCurrentTrack { return "曲末暂停" }
+        guard sleepTimerEndDate != nil else { return nil }
+        let total = max(0, Int(sleepTimerRemaining.rounded(.up)))
+        return String(format: "定时 %d:%02d", total / 60, total % 60)
+    }
+
+    private func scheduleSleepTimer() {
+        sleepTimer?.invalidate()
+        let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                self?.tickSleepTimer()
+            }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        sleepTimer = timer
+    }
+
+    private func tickSleepTimer() {
+        guard let end = sleepTimerEndDate else { return }
+        let remaining = end.timeIntervalSinceNow
+        guard remaining > 0 else {
+            cancelSleepTimer()
+            pause()
+            return
+        }
+        sleepTimerRemaining = remaining
+    }
+
     /// 重试当前歌曲
     func retry() async {
         guard currentSong != nil else { return }
@@ -319,6 +398,7 @@ final class PlayerStore: ObservableObject {
 
     private func resume() {
         guard player.currentItem != nil else { return }
+        player.defaultRate = playbackRate
         player.play()
         isPlaying = true
         updateNowPlaying()
@@ -371,6 +451,7 @@ final class PlayerStore: ObservableObject {
             player.replaceCurrentItem(with: item)
             observeItem(item)
             if shouldPlay {
+                player.defaultRate = playbackRate
                 player.play()
                 isPlaying = true
                 recordRecent(song)
@@ -488,6 +569,11 @@ final class PlayerStore: ObservableObject {
     }
 
     private func handleTrackEnd() async {
+        if sleepAfterCurrentTrack {
+            cancelSleepTimer()
+            pause()
+            return
+        }
         if repeatMode == .one {
             seek(to: 0)
             resume()
@@ -611,7 +697,7 @@ final class PlayerStore: ObservableObject {
             MPMediaItemPropertyArtist: song.artistText,
             MPMediaItemPropertyPlaybackDuration: duration,
             MPNowPlayingInfoPropertyElapsedPlaybackTime: currentTime,
-            MPNowPlayingInfoPropertyPlaybackRate: isPlaying ? 1.0 : 0.0
+            MPNowPlayingInfoPropertyPlaybackRate: isPlaying ? Double(playbackRate) : 0.0
         ]
         if let album = song.albumName, !album.isEmpty {
             info[MPMediaItemPropertyAlbumTitle] = album
