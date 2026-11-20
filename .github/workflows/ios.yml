@@ -102,6 +102,22 @@ jobs:
             fi
           done
 
+      - name: Publish build logs for diagnosis
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="ci-log"
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --title "CI 诊断日志" --notes "CI 失败时自动更新，可忽略" --prerelease
+          fi
+          for f in rust-build.log build.log; do
+            if [ -f "$f" ]; then
+              gh release upload "$TAG" "$f" --clobber
+            fi
+          done
+
       - name: Upload build log on failure
         if: failure()
         uses: actions/upload-artifact@v4
