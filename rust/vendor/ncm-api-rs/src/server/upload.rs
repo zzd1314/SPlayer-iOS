@@ -64,7 +64,7 @@ pub async fn handle_avatar_upload(
                 resp.status,
                 start.elapsed()
             );
-            build_success_response(resp)
+            build_success_response(resp, "/avatar/upload")
         }
         Err(e) => {
             tracing::warn!("/avatar/upload -> ERROR: {} ({:.1?})", e, start.elapsed());
@@ -131,7 +131,7 @@ pub async fn handle_voice_upload(
     {
         Ok(resp) => {
             tracing::info!("/voice/upload -> {} ({:.1?})", resp.status, start.elapsed());
-            build_success_response(resp)
+            build_success_response(resp, "/voice/upload")
         }
         Err(e) => {
             tracing::warn!("/voice/upload -> ERROR: {} ({:.1?})", e, start.elapsed());
