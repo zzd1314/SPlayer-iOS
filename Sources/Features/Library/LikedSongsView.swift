@@ -17,7 +17,7 @@ struct LikedSongsView: View {
 
         var title: String {
             switch self {
-            case .defaultOrder: return "默认（收藏时间）"
+            case .defaultOrder: return "收藏时间（最新在前）"
             case .name: return "歌曲名"
             case .artist: return "歌手"
             case .album: return "专辑"
@@ -181,8 +181,23 @@ struct LikedSongsView: View {
 
         do {
             let api = NeteaseAPI()
-            let ids = try await api.likeList(uid: uid, cookie: cookie)
-            songs = try await api.songDetails(ids: ids, cookie: cookie)
+            let allIds = try await api.likeList(uid: uid, cookie: cookie)
+            // likelist 不保证收藏时间顺序，改用歌单 trackIds 的顺序（最新收藏在前）
+            let orderedIds = (try? await api.likedTrackIds(uid: uid, cookie: cookie)) ?? []
+            let allSet = Set(allIds)
+            var seen = Set<Int>()
+            var ids: [Int] = []
+            for id in orderedIds where allSet.contains(id) {
+                if seen.insert(id).inserted { ids.append(id) }
+            }
+            for id in allIds where seen.insert(id).inserted {
+                ids.append(id)
+            }
+
+            let fetched = try await api.songDetails(ids: ids, cookie: cookie)
+            // /song/detail 的返回顺序不保证与请求一致，按 id 顺序还原
+            let byId = Dictionary(fetched.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+            songs = ids.compactMap { byId[$0] }
         } catch {
             errorText = error.localizedDescription
         }

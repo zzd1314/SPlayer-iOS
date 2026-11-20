@@ -46,6 +46,19 @@ struct LikeListResponse: Decodable {
     let ids: [Int]?
 }
 
+/// 歌单详情中的 trackIds（我喜欢的音乐按收藏时间倒序排列）
+struct PlaylistTrackIdsResponse: Decodable {
+    struct PlaylistInfo: Decodable {
+        struct TrackRef: Decodable {
+            let id: Int
+        }
+        let trackIds: [TrackRef]?
+    }
+
+    let code: Int
+    let playlist: PlaylistInfo?
+}
+
 struct SongDetailResponse: Decodable {
     let code: Int
     let songs: [Song]?
@@ -165,6 +178,19 @@ extension NeteaseAPI {
             throw APIError.business(code: response.code, message: "获取收藏列表失败")
         }
         return response.ids ?? []
+    }
+
+    /// 我喜欢的音乐歌单的 trackIds，顺序与客户端一致（最新收藏在前）
+    ///
+    /// `uid` 同时是「我喜欢的音乐」这个特殊歌单的 id；失败时返回空数组，由调用方回退到 likelist。
+    func likedTrackIds(uid: Int, cookie: String) async throws -> [Int] {
+        let response: PlaylistTrackIdsResponse = try await get(
+            "/playlist/detail",
+            query: ["id": String(uid)],
+            cookie: cookie
+        )
+        guard response.code == 200 else { return [] }
+        return (response.playlist?.trackIds ?? []).map(\.id)
     }
 
     /// 批量获取歌曲详情（每批最多 200 个 id）
