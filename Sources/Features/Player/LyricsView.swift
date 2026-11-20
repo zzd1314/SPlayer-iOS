@@ -3,6 +3,8 @@ import SwiftUI
 /// 逐行歌词（AMLL 风格）：当前行高亮 + 翻译 + 跟随封面颜色
 struct LyricsView: View {
     @EnvironmentObject private var player: PlayerStore
+    /// 宽屏分栏布局下，将“自动”对齐改为左对齐
+    var forceLeadingAlignment = false
 
     @AppStorage("showTranslation") private var showTranslation = true
     @AppStorage("showRomanization") private var showRomanization = false
@@ -15,8 +17,13 @@ struct LyricsView: View {
         followCoverColor ? (player.coverAccent ?? .splayerAccent) : .splayerAccent
     }
 
+    private var effectiveAlignment: String {
+        if forceLeadingAlignment, lyricAlignment == "auto" { return "left" }
+        return lyricAlignment
+    }
+
     private var textAlignment: TextAlignment {
-        switch lyricAlignment {
+        switch effectiveAlignment {
         case "left": return .leading
         case "right": return .trailing
         default: return .center
@@ -24,7 +31,7 @@ struct LyricsView: View {
     }
 
     private var horizontalAlignment: HorizontalAlignment {
-        switch lyricAlignment {
+        switch effectiveAlignment {
         case "left": return .leading
         case "right": return .trailing
         default: return .center
@@ -32,7 +39,7 @@ struct LyricsView: View {
     }
 
     private var frameAlignment: Alignment {
-        switch lyricAlignment {
+        switch effectiveAlignment {
         case "left": return .leading
         case "right": return .trailing
         default: return .center

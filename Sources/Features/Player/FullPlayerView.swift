@@ -5,6 +5,7 @@ import UIKit
 struct FullPlayerView: View {
     @EnvironmentObject private var player: PlayerStore
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     @AppStorage("followCoverColor") private var followCoverColor = true
     @AppStorage("keepScreenAwake") private var keepScreenAwake = true
@@ -23,12 +24,24 @@ struct FullPlayerView: View {
         followCoverColor ? (player.coverAccent ?? .splayerAccent) : .splayerAccent
     }
 
+    /// iPad 等宽屏设备使用左右分栏布局
+    private var isWideLayout: Bool { horizontalSizeClass == .regular }
+
     var body: some View {
         ZStack {
-            PlayerBackground(song: player.currentSong)
+            PlayerBackground(
+                song: player.currentSong,
+                blurRadius: isWideLayout ? 10 : 48,
+                dim: isWideLayout ? 0.22 : 0.38,
+                trailingScrim: isWideLayout
+            )
 
             if let song = player.currentSong {
-                content(song: song)
+                if isWideLayout {
+                    wideContent(song: song)
+                } else {
+                    content(song: song)
+                }
             } else {
                 emptyState
             }
@@ -107,6 +120,214 @@ struct FullPlayerView: View {
         .padding(.bottom, 8)
         .frame(maxWidth: 640)
         .frame(maxWidth: .infinity)
+    }
+
+    // MARK: - 宽屏（iPad）布局
+
+    /// 桌面版风格：封面铺满背景，右侧信息 + 歌词，底部通栏控制
+    private func wideContent(song: Song) -> some View {
+        GeometryReader { geo in
+            let panelWidth = min(max(geo.size.width * 0.44, 360), 620)
+
+            ZStack(alignment: .bottom) {
+                LinearGradient(
+                    colors: [.clear, .black.opacity(0.55)],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .frame(height: 240)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                .ignoresSafeArea()
+                .allowsHitTesting(false)
+
+                HStack(spacing: 0) {
+                    Spacer(minLength: 0)
+
+                    VStack(alignment: .leading, spacing: 0) {
+                        wideHeader(song: song)
+
+                        LyricsView(forceLeadingAlignment: true)
+                            .padding(.top, 8)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    }
+                    .padding(.horizontal, 38)
+                    .padding(.top, 58)
+                    .padding(.bottom, 158)
+                    .frame(width: panelWidth)
+                    .frame(maxHeight: .infinity, alignment: .top)
+                }
+                .frame(maxHeight: .infinity)
+
+                wideBottomBar(song: song)
+            }
+            .frame(width: geo.size.width, height: geo.size.height)
+            .overlay(alignment: .top) {
+                topBar
+                    .padding(.horizontal, 18)
+            }
+        }
+    }
+
+    private func wideHeader(song: Song) -> some View {
+        VStack(alignment: .leading, spacing: 9) {
+            Text(song.name)
+                .font(.system(size: 30, weight: .bold))
+                .foregroundStyle(.white)
+                .lineLimit(2)
+                .minimumScaleFactor(0.7)
+                .shadow(color: .black.opacity(0.28), radius: 8, y: 2)
+
+            HStack(spacing: 6) {
+                wideTag(qualityLabel)
+                if !player.lyricLines.isEmpty {
+                    wideTag("LRC")
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 5) {
+                Label(song.artistText, systemImage: "music.mic")
+                if let album = song.albumName, !album.isEmpty {
+                    Label(album, systemImage: "opticaldisc")
+                }
+            }
+            .font(.footnote)
+            .foregroundStyle(.white.opacity(0.62))
+            .lineLimit(1)
+            .padding(.top, 2)
+        }
+    }
+
+    private func wideTag(_ text: String) -> some View {
+        Text(text)
+            .font(.caption2.weight(.medium))
+            .foregroundStyle(.white.opacity(0.85))
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .overlay {
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                    .strokeBorder(.white.opacity(0.35), lineWidth: 0.8)
+            }
+    }
+
+    private func wideBottomBar(song: Song) -> some View {
+        VStack(spacing: 8) {
+            HStack(spacing: 18) {
+                HStack(spacing: 22) {
+                    Button {
+                        Task { await toggleLike() }
+                    } label: {
+                        Image(systemName: player.isCurrentSongLiked ? "heart.fill" : "heart")
+                            .foregroundStyle(player.isCurrentSongLiked ? accent : .white.opacity(0.85))
+                    }
+                    .buttonStyle(.plain)
+
+                    Button {
+                        showComments = true
+                    } label: {
+                        Image(systemName: "bubble.left")
+                    }
+                    .buttonStyle(.plain)
+
+                    if let url = song.shareURL {
+                        ShareLink(item: url) {
+                            Image(systemName: "square.and.arrow.up")
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .font(.system(size: 18, weight: .medium))
+                .foregroundStyle(.white.opacity(0.88))
+
+                Spacer(minLength: 12)
+
+                HStack(spacing: 24) {
+                    Button {
+                        player.toggleShuffle()
+                        showHint(player.isShuffleEnabled ? "随机播放已开启" : "随机播放已关闭")
+                    } label: {
+                        Image(systemName: "shuffle")
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundStyle(player.isShuffleEnabled ? accent : .white.opacity(0.5))
+                    }
+                    .buttonStyle(.plain)
+
+                    Button {
+                        Task { await player.previous() }
+                    } label: {
+                        Image(systemName: "backward.fill")
+                            .font(.system(size: 24, weight: .semibold))
+                            .foregroundStyle(.white)
+                    }
+                    .buttonStyle(.plain)
+
+                    Button {
+                        player.togglePlayPause()
+                    } label: {
+                        Image(systemName: player.isPlaying ? "pause.circle.fill" : "play.circle.fill")
+                            .font(.system(size: 58, weight: .regular))
+                            .foregroundStyle(.white)
+                            .shadow(color: .black.opacity(0.3), radius: 10, y: 5)
+                    }
+                    .buttonStyle(.plain)
+
+                    Button {
+                        Task { await player.next() }
+                    } label: {
+                        Image(systemName: "forward.fill")
+                            .font(.system(size: 24, weight: .semibold))
+                            .foregroundStyle(.white)
+                    }
+                    .buttonStyle(.plain)
+
+                    Button {
+                        player.cycleRepeatMode()
+                        showHint(player.repeatMode.title)
+                    } label: {
+                        Image(systemName: player.repeatMode.symbol)
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundStyle(player.repeatMode == .off ? .white.opacity(0.5) : accent)
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                Spacer(minLength: 12)
+
+                HStack(spacing: 10) {
+                    Text(qualityLabel)
+                        .font(.caption2)
+                        .foregroundStyle(.white.opacity(0.85))
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 4)
+                        .background(.white.opacity(0.12), in: Capsule())
+                        .onTapGesture { showOptions = true }
+
+                    if player.playbackRate != 1 {
+                        Text(rateLabel)
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(accent)
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 4)
+                            .background(.white.opacity(0.12), in: Capsule())
+                            .onTapGesture { showOptions = true }
+                    }
+
+                    Button {
+                        showQueue = true
+                    } label: {
+                        Image(systemName: "list.bullet")
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundStyle(.white.opacity(0.88))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 32)
+
+            progressSection
+                .frame(maxWidth: 520)
+                .padding(.horizontal, 24)
+        }
+        .padding(.bottom, 14)
     }
 
     private var topBar: some View {
@@ -431,6 +652,10 @@ struct FullPlayerView: View {
 
 private struct PlayerBackground: View {
     let song: Song?
+    var blurRadius: CGFloat = 48
+    var dim: Double = 0.38
+    /// 宽屏下右侧加深，保证歌词可读
+    var trailingScrim = false
 
     var body: some View {
         GeometryReader { geo in
@@ -449,8 +674,8 @@ private struct PlayerBackground: View {
                     }
                     .frame(width: geo.size.width, height: geo.size.height)
                     .clipped()
-                    .blur(radius: 48)
-                    .overlay(Color.black.opacity(0.38))
+                    .blur(radius: blurRadius)
+                    .overlay(Color.black.opacity(dim))
                 }
 
                 LinearGradient(
@@ -458,6 +683,18 @@ private struct PlayerBackground: View {
                     startPoint: .top,
                     endPoint: .bottom
                 )
+
+                if trailingScrim {
+                    LinearGradient(
+                        stops: [
+                            .init(color: .clear, location: 0.34),
+                            .init(color: .black.opacity(0.5), location: 0.62),
+                            .init(color: .black.opacity(0.88), location: 1)
+                        ],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                }
             }
             .frame(width: geo.size.width, height: geo.size.height)
         }
