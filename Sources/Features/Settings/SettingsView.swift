@@ -215,9 +215,11 @@ private struct LyricSettingsView: View {
 
     var body: some View {
         Form {
-            Section("内容") {
+            Section {
                 Toggle("显示翻译", isOn: $showTranslation)
                 Toggle("跟随封面颜色", isOn: $followCoverColor)
+            } header: {
+                Text("内容")
             } footer: {
                 Text("跟随封面颜色会提取当前封面主色，用于歌词高亮与主题色。")
             }
