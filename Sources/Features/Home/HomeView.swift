@@ -91,18 +91,32 @@ struct HomeView: View {
 
     private var statsRow: some View {
         HStack(spacing: 12) {
-            statCard(
-                icon: "clock.arrow.circlepath",
-                tint: .blue,
-                value: "\(player.recentSongs.count)",
-                title: "最近播放"
-            )
-            statCard(
-                icon: "heart.fill",
-                tint: .pink,
-                value: "\(player.likedSongIds.count)",
-                title: "我喜欢的音乐"
-            )
+            NavigationLink {
+                RecentPlaysView()
+            } label: {
+                statCard(
+                    icon: "clock.arrow.circlepath",
+                    tint: .blue,
+                    value: "\(player.recentSongs.count)",
+                    title: "最近播放",
+                    showsChevron: true
+                )
+            }
+            .buttonStyle(.plain)
+
+            NavigationLink {
+                LikedSongsView()
+            } label: {
+                statCard(
+                    icon: "heart.fill",
+                    tint: .pink,
+                    value: "\(player.likedSongIds.count)",
+                    title: "我喜欢的音乐",
+                    showsChevron: true
+                )
+            }
+            .buttonStyle(.plain)
+
             if horizontalSizeClass == .regular {
                 statCard(
                     icon: "music.note.list",
@@ -114,7 +128,7 @@ struct HomeView: View {
         }
     }
 
-    private func statCard(icon: String, tint: Color, value: String, title: String) -> some View {
+    private func statCard(icon: String, tint: Color, value: String, title: String, showsChevron: Bool = false) -> some View {
         HStack(spacing: 10) {
             Image(systemName: icon)
                 .font(.system(size: 15, weight: .semibold))
@@ -133,6 +147,12 @@ struct HomeView: View {
             }
 
             Spacer(minLength: 0)
+
+            if showsChevron {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.tertiary)
+            }
         }
         .padding(.horizontal, 11)
         .padding(.vertical, 9)

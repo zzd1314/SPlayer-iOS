@@ -10,7 +10,8 @@ struct FullPlayerView: View {
     @AppStorage("followCoverColor") private var followCoverColor = true
     @AppStorage("keepScreenAwake") private var keepScreenAwake = true
     @AppStorage("timeFormat") private var timeFormat = TimeFormatMode.currentTotal.rawValue
-    @AppStorage("audioLevel") private var audioLevel = "exhigh"
+    /// 宽屏左半屏封面样式：full 全屏铺满 / square 正方形
+    @AppStorage("fullPlayerCoverStyle") private var coverStyle = "full"
 
     @State private var showLyrics = false
     @State private var showQueue = false
@@ -29,12 +30,16 @@ struct FullPlayerView: View {
 
     var body: some View {
         ZStack {
-            PlayerBackground(
-                song: player.currentSong,
-                blurRadius: isWideLayout ? 10 : 48,
-                dim: isWideLayout ? 0.22 : 0.38,
-                trailingScrim: isWideLayout
-            )
+            if isWideLayout {
+                Color.black
+                    .ignoresSafeArea()
+            } else {
+                PlayerBackground(
+                    song: player.currentSong,
+                    blurRadius: 48,
+                    dim: 0.38
+                )
+            }
 
             if let song = player.currentSong {
                 if isWideLayout {
@@ -124,76 +129,151 @@ struct FullPlayerView: View {
 
     // MARK: - 宽屏（iPad）布局
 
-    /// 桌面版风格：封面铺满背景，右侧信息 + 歌词，底部通栏控制
+    /// 左半屏封面 + 右半屏模糊扩展背景与歌曲信息
     private func wideContent(song: Song) -> some View {
         GeometryReader { geo in
-            let panelWidth = min(max(geo.size.width * 0.44, 360), 620)
+            HStack(spacing: 0) {
+                wideCoverPanel(song: song)
+                    .frame(width: geo.size.width * 0.5)
+                    .clipped()
 
-            ZStack(alignment: .bottom) {
-                LinearGradient(
-                    colors: [.clear, .black.opacity(0.55)],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-                .frame(height: 240)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-                .ignoresSafeArea()
-                .allowsHitTesting(false)
-
-                HStack(spacing: 0) {
-                    Spacer(minLength: 0)
-
-                    VStack(alignment: .leading, spacing: 0) {
-                        wideHeader(song: song)
-
-                        LyricsView(forceLeadingAlignment: true)
-                            .padding(.top, 8)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                wideInfoPanel(song: song)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background {
+                        wideInfoBackground(song: song)
                     }
-                    .padding(.horizontal, 38)
-                    .padding(.top, 58)
-                    .padding(.bottom, 158)
-                    .frame(width: panelWidth)
-                    .frame(maxHeight: .infinity, alignment: .top)
-                }
-                .frame(maxHeight: .infinity)
-
-                wideBottomBar(song: song)
             }
             .frame(width: geo.size.width, height: geo.size.height)
-            .overlay(alignment: .top) {
-                topBar
-                    .padding(.horizontal, 18)
+        }
+    }
+
+    // MARK: 左半屏封面
+
+    private func wideCoverPanel(song: Song) -> some View {
+        GeometryReader { geo in
+            let side = min(geo.size.width, geo.size.height) * 0.76
+
+            ZStack {
+                Color.black
+
+                if coverStyle == "square" {
+                    coverImage(song: song)
+                        .blur(radius: 42)
+                        .overlay(Color.black.opacity(0.45))
+
+                    CoverImage(urlString: song.albumPicUrl, size: side, cornerRadius: 18)
+                        .shadow(color: .black.opacity(0.5), radius: 30, y: 16)
+                } else {
+                    coverImage(song: song)
+                }
+            }
+            .frame(width: geo.size.width, height: geo.size.height)
+            .clipped()
+            .overlay(alignment: .bottomTrailing) {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.25)) {
+                        coverStyle = coverStyle == "full" ? "square" : "full"
+                    }
+                } label: {
+                    Image(systemName: coverStyle == "full" ? "square" : "arrow.up.left.and.arrow.down.right")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 36, height: 36)
+                        .background(.ultraThinMaterial, in: Circle())
+                }
+                .buttonStyle(.plain)
+                .padding(16)
+                .accessibilityLabel(coverStyle == "full" ? "切换为正方形封面" : "切换为全屏封面")
             }
         }
     }
 
-    private func wideHeader(song: Song) -> some View {
-        VStack(alignment: .leading, spacing: 9) {
-            Text(song.name)
-                .font(.system(size: 30, weight: .bold))
-                .foregroundStyle(.white)
-                .lineLimit(2)
-                .minimumScaleFactor(0.7)
-                .shadow(color: .black.opacity(0.28), radius: 8, y: 2)
-
-            HStack(spacing: 6) {
-                wideTag(qualityLabel)
-                if !player.lyricLines.isEmpty {
-                    wideTag("LRC")
+    @ViewBuilder
+    private func coverImage(song: Song) -> some View {
+        if let urlString = song.albumPicUrl, let url = URL(string: urlString) {
+            AsyncImage(url: url) { phase in
+                if let image = phase.image {
+                    image
+                        .resizable()
+                        .scaledToFill()
+                } else {
+                    Color.black
                 }
             }
+        } else {
+            Color.black
+        }
+    }
 
-            VStack(alignment: .leading, spacing: 5) {
-                Label(song.artistText, systemImage: "music.mic")
-                if let album = song.albumName, !album.isEmpty {
-                    Label(album, systemImage: "opticaldisc")
+    private func wideInfoBackground(song: Song) -> some View {
+        ZStack {
+            Color.black
+
+            coverImage(song: song)
+                .blur(radius: 36)
+                .overlay(Color.black.opacity(0.55))
+
+            LinearGradient(
+                colors: [Color.black.opacity(0.15), Color.black.opacity(0.55)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        }
+        .clipped()
+    }
+
+    // MARK: 右半屏信息
+
+    private func wideInfoPanel(song: Song) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            topBar
+                .padding(.horizontal, 26)
+                .padding(.top, 6)
+
+            VStack(alignment: .leading, spacing: 9) {
+                Text(song.name)
+                    .font(.system(size: 30, weight: .bold))
+                    .foregroundStyle(.white)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.7)
+                    .shadow(color: .black.opacity(0.28), radius: 8, y: 2)
+
+                HStack(spacing: 6) {
+                    if !player.lyricLines.isEmpty {
+                        wideTag("LRC")
+                    }
+                    if player.playbackRate != 1 {
+                        wideTag(rateLabel)
+                    }
                 }
+
+                VStack(alignment: .leading, spacing: 5) {
+                    Label(song.artistText, systemImage: "music.mic")
+                    if let album = song.albumName, !album.isEmpty {
+                        Label(album, systemImage: "opticaldisc")
+                    }
+                }
+                .font(.footnote)
+                .foregroundStyle(.white.opacity(0.62))
+                .lineLimit(1)
+                .padding(.top, 2)
             }
-            .font(.footnote)
-            .foregroundStyle(.white.opacity(0.62))
-            .lineLimit(1)
-            .padding(.top, 2)
+            .padding(.horizontal, 32)
+            .padding(.top, 16)
+
+            LyricsView(forceLeadingAlignment: true)
+                .padding(.horizontal, 22)
+                .padding(.top, 4)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            if let error = player.errorText {
+                errorBar(error)
+                    .padding(.horizontal, 32)
+            }
+
+            wideControlArea
+                .padding(.horizontal, 32)
+                .padding(.bottom, 8)
         }
     }
 
@@ -209,125 +289,86 @@ struct FullPlayerView: View {
             }
     }
 
-    private func wideBottomBar(song: Song) -> some View {
+    private var wideControlArea: some View {
         VStack(spacing: 8) {
-            HStack(spacing: 18) {
-                HStack(spacing: 22) {
-                    Button {
-                        Task { await toggleLike() }
-                    } label: {
-                        Image(systemName: player.isCurrentSongLiked ? "heart.fill" : "heart")
-                            .foregroundStyle(player.isCurrentSongLiked ? accent : .white.opacity(0.85))
-                    }
-                    .buttonStyle(.plain)
+            progressSection
 
-                    Button {
-                        showComments = true
-                    } label: {
-                        Image(systemName: "bubble.left")
-                    }
-                    .buttonStyle(.plain)
-
-                    if let url = song.shareURL {
-                        ShareLink(item: url) {
-                            Image(systemName: "square.and.arrow.up")
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .font(.system(size: 18, weight: .medium))
-                .foregroundStyle(.white.opacity(0.88))
-
-                Spacer(minLength: 12)
-
-                HStack(spacing: 24) {
-                    Button {
-                        player.toggleShuffle()
-                        showHint(player.isShuffleEnabled ? "随机播放已开启" : "随机播放已关闭")
-                    } label: {
-                        Image(systemName: "shuffle")
-                            .font(.system(size: 18, weight: .semibold))
-                            .foregroundStyle(player.isShuffleEnabled ? accent : .white.opacity(0.5))
-                    }
-                    .buttonStyle(.plain)
-
-                    Button {
-                        Task { await player.previous() }
-                    } label: {
-                        Image(systemName: "backward.fill")
-                            .font(.system(size: 24, weight: .semibold))
-                            .foregroundStyle(.white)
-                    }
-                    .buttonStyle(.plain)
-
-                    Button {
-                        player.togglePlayPause()
-                    } label: {
-                        Image(systemName: player.isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                            .font(.system(size: 58, weight: .regular))
-                            .foregroundStyle(.white)
-                            .shadow(color: .black.opacity(0.3), radius: 10, y: 5)
-                    }
-                    .buttonStyle(.plain)
-
-                    Button {
-                        Task { await player.next() }
-                    } label: {
-                        Image(systemName: "forward.fill")
-                            .font(.system(size: 24, weight: .semibold))
-                            .foregroundStyle(.white)
-                    }
-                    .buttonStyle(.plain)
-
-                    Button {
-                        player.cycleRepeatMode()
-                        showHint(player.repeatMode.title)
-                    } label: {
-                        Image(systemName: player.repeatMode.symbol)
-                            .font(.system(size: 18, weight: .semibold))
-                            .foregroundStyle(player.repeatMode == .off ? .white.opacity(0.5) : accent)
-                    }
-                    .buttonStyle(.plain)
+            HStack(spacing: 20) {
+                Button {
+                    Task { await toggleLike() }
+                } label: {
+                    Image(systemName: player.isCurrentSongLiked ? "heart.fill" : "heart")
+                        .foregroundStyle(player.isCurrentSongLiked ? accent : .white.opacity(0.85))
                 }
 
-                Spacer(minLength: 12)
+                Button {
+                    showComments = true
+                } label: {
+                    Image(systemName: "bubble.left")
+                }
 
-                HStack(spacing: 10) {
-                    Text(qualityLabel)
-                        .font(.caption2)
-                        .foregroundStyle(.white.opacity(0.85))
-                        .padding(.horizontal, 9)
-                        .padding(.vertical, 4)
-                        .background(.white.opacity(0.12), in: Capsule())
-                        .onTapGesture { showOptions = true }
-
-                    if player.playbackRate != 1 {
-                        Text(rateLabel)
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(accent)
-                            .padding(.horizontal, 9)
-                            .padding(.vertical, 4)
-                            .background(.white.opacity(0.12), in: Capsule())
-                            .onTapGesture { showOptions = true }
+                if let url = player.currentSong?.shareURL {
+                    ShareLink(item: url) {
+                        Image(systemName: "square.and.arrow.up")
                     }
+                }
 
-                    Button {
-                        showQueue = true
-                    } label: {
-                        Image(systemName: "list.bullet")
-                            .font(.system(size: 18, weight: .semibold))
-                            .foregroundStyle(.white.opacity(0.88))
-                    }
-                    .buttonStyle(.plain)
+                Spacer(minLength: 10)
+
+                Button {
+                    player.toggleShuffle()
+                    showHint(player.isShuffleEnabled ? "随机播放已开启" : "随机播放已关闭")
+                } label: {
+                    Image(systemName: "shuffle")
+                        .foregroundStyle(player.isShuffleEnabled ? accent : .white.opacity(0.5))
+                }
+
+                Button {
+                    Task { await player.previous() }
+                } label: {
+                    Image(systemName: "backward.fill")
+                        .font(.system(size: 22, weight: .semibold))
+                        .foregroundStyle(.white)
+                }
+
+                Button {
+                    player.togglePlayPause()
+                } label: {
+                    Image(systemName: player.isPlaying ? "pause.circle.fill" : "play.circle.fill")
+                        .font(.system(size: 54, weight: .regular))
+                        .foregroundStyle(.white)
+                        .shadow(color: .black.opacity(0.3), radius: 10, y: 5)
+                }
+
+                Button {
+                    Task { await player.next() }
+                } label: {
+                    Image(systemName: "forward.fill")
+                        .font(.system(size: 22, weight: .semibold))
+                        .foregroundStyle(.white)
+                }
+
+                Button {
+                    player.cycleRepeatMode()
+                    showHint(player.repeatMode.title)
+                } label: {
+                    Image(systemName: player.repeatMode.symbol)
+                        .foregroundStyle(player.repeatMode == .off ? .white.opacity(0.5) : accent)
+                }
+
+                Spacer(minLength: 10)
+
+                Button {
+                    showQueue = true
+                } label: {
+                    Image(systemName: "list.bullet")
+                        .foregroundStyle(.white.opacity(0.88))
                 }
             }
-            .padding(.horizontal, 32)
-
-            progressSection
-                .frame(maxWidth: 520)
-                .padding(.horizontal, 24)
+            .font(.system(size: 18, weight: .medium))
+            .foregroundStyle(.white.opacity(0.88))
+            .buttonStyle(.plain)
         }
-        .padding(.bottom, 14)
     }
 
     private var topBar: some View {
@@ -551,15 +592,6 @@ struct FullPlayerView: View {
 
             Spacer()
 
-            Text(qualityLabel)
-                .font(.caption2)
-                .foregroundStyle(.white.opacity(0.85))
-                .padding(.horizontal, 9)
-                .padding(.vertical, 4)
-                .background(.white.opacity(0.12), in: Capsule())
-                .contentShape(Capsule())
-                .onTapGesture { showOptions = true }
-
             Text(player.playbackRate == 1 ? "1x" : rateLabel)
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(player.playbackRate == 1 ? .white.opacity(0.85) : accent)
@@ -608,10 +640,6 @@ struct FullPlayerView: View {
         } catch {
             showHint("操作失败：\(error.localizedDescription)")
         }
-    }
-
-    private var qualityLabel: String {
-        AppSettings.audioLevels.first(where: { $0.value == audioLevel })?.label ?? "极高 (HQ)"
     }
 
     private var rateLabel: String {

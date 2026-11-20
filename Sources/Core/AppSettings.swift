@@ -303,7 +303,8 @@ enum AppSettings {
         "timeFormat", "showTranslation", "showRomanization", "lyricOffset", "lyricFontSize", "lyricAlignment", "inactiveAlpha",
         "followCoverColor", "liveActivityEnabled", "themeMode", "themeSource", "customThemeColor",
         "appearanceStyle", "backgroundBlur", "backgroundDim", "backgroundRevision",
-        "enableSongCache", "cacheLimitMB", "repeatMode", "shuffleEnabled", "playbackSnapshot"
+        "enableSongCache", "cacheLimitMB", "repeatMode", "shuffleEnabled", "playbackSnapshot",
+        "updateChannel", "autoCheckUpdate", "fullPlayerCoverStyle"
     ]
 
     /// 恢复默认设置（不影响登录态与缓存文件）

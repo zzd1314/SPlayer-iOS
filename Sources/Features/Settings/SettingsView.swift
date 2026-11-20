@@ -1,5 +1,6 @@
 import PhotosUI
 import SwiftUI
+import UIKit
 
 // MARK: - 设置分类
 
@@ -792,21 +793,191 @@ private struct CacheSettingsView: View {
 // MARK: - 关于
 
 private struct AboutSettingsView: View {
-    @State private var showResetConfirm = false
+    @Environment(\.openURL) private var openURL
 
-    private var appVersion: String {
-        let info = Bundle.main.infoDictionary
-        let short = info?["CFBundleShortVersionString"] as? String ?? "1.0"
-        let build = info?["CFBundleVersion"] as? String ?? "1"
-        return "\(short) (\(build))"
+    @AppStorage("updateChannel") private var updateChannel = "stable"
+    @AppStorage("autoCheckUpdate") private var autoCheckUpdate = true
+
+    @State private var showResetConfirm = false
+    @State private var copied = false
+
+    private let developers: [Developer] = [
+        Developer(name: "imsyy", role: "Author"),
+        Developer(name: "MoYingJi", role: "Contributor"),
+        Developer(name: "kyv001", role: "Contributor"),
+        Developer(name: "PhantomPixel-0418", role: "Contributor"),
+        Developer(name: "laoshuaikaixue", role: "Contributor"),
+        Developer(name: "apoint123", role: "Contributor")
+    ]
+
+    private var shortVersion: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0"
+    }
+
+    private var buildVersion: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "1"
+    }
+
+    private var appVersion: String { "\(shortVersion) (\(buildVersion))" }
+
+    private var releasesURL: URL {
+        URL(string: "https://github.com/zzd1314/SPlayer-iOS/releases")!
+    }
+
+    private var repoURL: URL {
+        URL(string: "https://github.com/SPlayer-Dev/SPlayer-Next")!
+    }
+
+    private var contributorsURL: URL {
+        URL(string: "https://github.com/zzd1314/SPlayer-iOS/graphs/contributors")!
+    }
+
+    private var environmentItems: [EnvironmentItem] {
+        [
+            EnvironmentItem(title: "应用", value: "SPlayer-Next"),
+            EnvironmentItem(title: "版本", value: appVersion),
+            EnvironmentItem(title: "系统", value: "\(UIDevice.current.systemName) \(UIDevice.current.systemVersion)"),
+            EnvironmentItem(title: "设备", value: UIDevice.current.localizedModel),
+            EnvironmentItem(title: "API", value: AppSettings.useBuiltinAPI ? "内置本地服务" : AppSettings.baseURL),
+            EnvironmentItem(title: "界面", value: "SwiftUI")
+        ]
+    }
+
+    private var environmentText: String {
+        environmentItems.map { "\($0.title)：\($0.value)" }.joined(separator: "\n")
     }
 
     var body: some View {
         Form {
             Section {
-                LabeledContent("应用", value: "SPlayer-Next")
-                LabeledContent("平台", value: "iOS / iPadOS")
-                LabeledContent("版本", value: appVersion)
+                HStack(spacing: 14) {
+                    Image("AppLogo")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 46, height: 46)
+                        .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("SPlayer-Next")
+                            .font(.headline)
+                        Text("v\(shortVersion)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Spacer(minLength: 0)
+
+                    VStack(alignment: .trailing, spacing: 6) {
+                        Button("检查更新") {
+                            openURL(releasesURL)
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+
+                        Button(copied ? "已复制" : "复制信息") {
+                            copyEnvironment()
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                    }
+                }
+                .padding(.vertical, 6)
+            } header: {
+                Text("关于软件")
+            }
+
+            Section {
+                Picker("更新通道", selection: $updateChannel) {
+                    Text("正式版").tag("stable")
+                    Text("测试版").tag("beta")
+                }
+                .pickerStyle(.menu)
+
+                Toggle("自动检查更新", isOn: $autoCheckUpdate)
+            } header: {
+                Text("更新")
+            } footer: {
+                Text("选择接收更新的通道，切换通道不会自动降级；自动检查会在启动后及定时在后台检查新版本。")
+            }
+
+            Section("特别致谢") {
+                Link(destination: URL(string: "https://github.com/Steve-xmh/applemusic-like-lyrics")!) {
+                    thanksRow(
+                        title: "applemusic-like-lyrics",
+                        subtitle: "类 Apple Music 歌词显示组件库"
+                    )
+                }
+
+                Link(destination: URL(string: "https://github.com/neteasecloudmusicapienhanced/api-enhanced")!) {
+                    thanksRow(
+                        title: "NeteaseCloudMusicApi Enhanced",
+                        subtitle: "NCM API 备份 + 增强"
+                    )
+                }
+            }
+
+            Section("开发人员") {
+                ForEach(developers) { developer in
+                    Link(destination: developer.url) {
+                        HStack(spacing: 12) {
+                            DeveloperAvatar(name: developer.name)
+
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(developer.name)
+                                    .font(.subheadline.weight(.medium))
+                                    .foregroundStyle(.primary)
+                                Text(developer.role)
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+
+                            Spacer(minLength: 0)
+
+                            Image(systemName: "arrow.up.right")
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                        }
+                    }
+                }
+
+                Link(destination: contributorsURL) {
+                    Label("更多贡献者", systemImage: "person.3")
+                }
+            }
+
+            Section("社区与资讯") {
+                Link(destination: repoURL) {
+                    Label("SPlayer-Next", systemImage: "chevron.left.forwardslash.chevron.right")
+                }
+
+                Link(destination: URL(string: "https://splayer-next.imsyy.top")!) {
+                    Label("官方网站", systemImage: "globe")
+                }
+            }
+
+            Section {
+                VStack(alignment: .leading, spacing: 7) {
+                    ForEach(environmentItems) { item in
+                        HStack(alignment: .top, spacing: 10) {
+                            Text(item.title)
+                                .foregroundStyle(.secondary)
+                                .frame(width: 44, alignment: .leading)
+                            Text(item.value)
+                                .foregroundStyle(.primary)
+                            Spacer(minLength: 0)
+                        }
+                        .font(.system(.caption, design: .monospaced))
+                    }
+                }
+                .padding(.vertical, 2)
+
+                Button {
+                    copyEnvironment()
+                } label: {
+                    Label(copied ? "已复制" : "复制环境信息", systemImage: copied ? "checkmark" : "doc.on.doc")
+                }
+            } header: {
+                Text("环境信息")
             }
 
             Section {
@@ -829,4 +1000,74 @@ private struct AboutSettingsView: View {
             Text("设置将恢复默认值，操作不可撤销。")
         }
     }
+
+    private func thanksRow(title: String, subtitle: String) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: "sparkles")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(Color.splayerAccent)
+                .frame(width: 30, height: 30)
+                .background(Color.splayerAccent.opacity(0.12), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title)
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.primary)
+                Text(subtitle)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer(minLength: 0)
+
+            Image(systemName: "arrow.up.right")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+        }
+    }
+
+    private func copyEnvironment() {
+        UIPasteboard.general.string = environmentText
+        copied = true
+        Task {
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            copied = false
+        }
+    }
+}
+
+private struct Developer: Identifiable {
+    let name: String
+    let role: String
+    var id: String { name }
+    var url: URL { URL(string: "https://github.com/\(name)")! }
+}
+
+private struct DeveloperAvatar: View {
+    let name: String
+
+    var body: some View {
+        AsyncImage(url: URL(string: "https://github.com/\(name).png?size=96")) { phase in
+            if let image = phase.image {
+                image
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                ZStack {
+                    Color.secondary.opacity(0.15)
+                    Text(String(name.prefix(1)).uppercased())
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .frame(width: 32, height: 32)
+        .clipShape(Circle())
+    }
+}
+
+private struct EnvironmentItem: Identifiable {
+    let title: String
+    let value: String
+    var id: String { title }
 }

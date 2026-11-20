@@ -1,13 +1,12 @@
 import SwiftUI
 
-/// 桌面版式底部播放栏：左歌曲信息、中控制与进度、右音质/队列
+/// 桌面版式底部播放栏：左歌曲信息、中控制与进度、右倍速/队列
 /// iPhone 使用同款风格的精简条，点击展开全屏播放页
 struct PlayerBar: View {
     @EnvironmentObject private var player: PlayerStore
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     @AppStorage("showLyricInBar") private var showLyricInBar = true
-    @AppStorage("audioLevel") private var audioLevel = "exhigh"
     @AppStorage("followCoverColor") private var followCoverColor = true
 
     @State private var showFullPlayer = false
@@ -62,11 +61,11 @@ struct PlayerBar: View {
     // MARK: - iPad / 宽屏整条
 
     private func regularBar(song: Song) -> some View {
-        HStack(spacing: 18) {
+        HStack(spacing: 16) {
             trackInfo(song: song)
-                .frame(width: 248, alignment: .leading)
+                .frame(width: 236, alignment: .leading)
 
-            VStack(spacing: 1) {
+            VStack(spacing: 0) {
                 transportRow
                 progressRow
             }
@@ -74,14 +73,14 @@ struct PlayerBar: View {
 
             rightControls
         }
-        .padding(.horizontal, 18)
-        .padding(.top, 9)
-        .padding(.bottom, 7)
+        .padding(.horizontal, 16)
+        .padding(.top, 6)
+        .padding(.bottom, 4)
     }
 
     private func trackInfo(song: Song) -> some View {
-        HStack(spacing: 11) {
-            CoverImage(urlString: song.albumPicUrl, size: 46, cornerRadius: 7)
+        HStack(spacing: 10) {
+            CoverImage(urlString: song.albumPicUrl, size: 40, cornerRadius: 7)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(song.name)
@@ -107,17 +106,32 @@ struct PlayerBar: View {
         }
         .contentShape(Rectangle())
         .onTapGesture { showFullPlayer = true }
+        .simultaneousGesture(songSwitchGesture)
+    }
+
+    /// 左右滑动封面区域快速切歌：左滑下一首、右滑上一首
+    private var songSwitchGesture: some Gesture {
+        DragGesture(minimumDistance: 18)
+            .onEnded { value in
+                let dx = value.translation.width
+                guard abs(dx) > abs(value.translation.height), abs(dx) > 40 else { return }
+                if dx < 0 {
+                    Task { await player.next() }
+                } else {
+                    Task { await player.previous() }
+                }
+            }
     }
 
     private var transportRow: some View {
-        HStack(spacing: 22) {
+        HStack(spacing: 20) {
             Button {
                 player.toggleShuffle()
             } label: {
                 Image(systemName: "shuffle")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(player.isShuffleEnabled ? accent : Color.secondary)
-                    .frame(width: 26, height: 26)
+                    .frame(width: 24, height: 24)
             }
             .buttonStyle(.plain)
             .accessibilityLabel("随机播放")
@@ -126,8 +140,8 @@ struct PlayerBar: View {
                 Task { await player.previous() }
             } label: {
                 Image(systemName: "backward.fill")
-                    .font(.system(size: 16, weight: .semibold))
-                    .frame(width: 30, height: 28)
+                    .font(.system(size: 15, weight: .semibold))
+                    .frame(width: 28, height: 26)
             }
             .buttonStyle(.plain)
             .accessibilityLabel("上一首")
@@ -136,8 +150,8 @@ struct PlayerBar: View {
                 player.togglePlayPause()
             } label: {
                 Image(systemName: player.isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                    .font(.system(size: 33, weight: .regular))
-                    .frame(width: 38, height: 38)
+                    .font(.system(size: 30, weight: .regular))
+                    .frame(width: 34, height: 32)
                     .contentShape(Circle())
             }
             .buttonStyle(.plain)
@@ -148,8 +162,8 @@ struct PlayerBar: View {
                 Task { await player.next() }
             } label: {
                 Image(systemName: "forward.fill")
-                    .font(.system(size: 16, weight: .semibold))
-                    .frame(width: 30, height: 28)
+                    .font(.system(size: 15, weight: .semibold))
+                    .frame(width: 28, height: 26)
             }
             .buttonStyle(.plain)
             .accessibilityLabel("下一首")
@@ -158,9 +172,9 @@ struct PlayerBar: View {
                 player.cycleRepeatMode()
             } label: {
                 Image(systemName: player.repeatMode.symbol)
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(player.repeatMode == .off ? Color.secondary : accent)
-                    .frame(width: 26, height: 26)
+                    .frame(width: 24, height: 24)
             }
             .buttonStyle(.plain)
             .accessibilityLabel(player.repeatMode.title)
@@ -195,22 +209,6 @@ struct PlayerBar: View {
 
     private var rightControls: some View {
         HStack(spacing: 12) {
-            Button {
-                activeSheet = .options
-            } label: {
-                Text(qualityLabel)
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .overlay {
-                        Capsule()
-                            .strokeBorder(Color.primary.opacity(0.16), lineWidth: 0.8)
-                    }
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("播放音质")
-
             if player.playbackRate != 1 {
                 Button {
                     activeSheet = .options
@@ -223,6 +221,7 @@ struct PlayerBar: View {
                         .background(accent.opacity(0.12), in: Capsule())
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("播放速度")
             }
 
             Button {
@@ -248,7 +247,7 @@ struct PlayerBar: View {
             .accessibilityLabel("更多播放选项")
         }
         .foregroundStyle(.secondary)
-        .frame(width: 168, alignment: .trailing)
+        .frame(width: 112, alignment: .trailing)
     }
 
     // MARK: - iPhone 精简条
@@ -305,20 +304,10 @@ struct PlayerBar: View {
         }
         .contentShape(Rectangle())
         .onTapGesture { showFullPlayer = true }
+        .simultaneousGesture(songSwitchGesture)
     }
 
     // MARK: - 文案
-
-    private var qualityLabel: String {
-        switch audioLevel {
-        case "standard": return "LQ"
-        case "higher": return "SQ"
-        case "exhigh": return "HQ"
-        case "lossless": return "Lossless"
-        case "hires": return "Hi-Res"
-        default: return "HQ"
-        }
-    }
 
     private var rateLabel: String {
         String(format: "%gx", Double(player.playbackRate))

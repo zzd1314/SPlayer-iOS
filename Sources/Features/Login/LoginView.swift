@@ -157,21 +157,13 @@ struct LoginView: View {
 
     private var header: some View {
         VStack(spacing: 10) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [Color.splayerAccent, Color(hex: 0xFFB26B)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .frame(width: 76, height: 76)
-                    .shadow(color: Color.splayerAccent.opacity(0.35), radius: 16, y: 8)
-                Image(systemName: "music.note")
-                    .font(.system(size: 34, weight: .semibold))
-                    .foregroundStyle(.white)
-            }
+            Image("AppLogo")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 76, height: 76)
+                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .shadow(color: Color.splayerAccent.opacity(0.3), radius: 16, y: 8)
+                .accessibilityLabel("SPlayer-Next")
 
             Text("SPlayer")
                 .font(.largeTitle.weight(.bold))

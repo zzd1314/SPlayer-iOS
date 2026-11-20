@@ -262,11 +262,12 @@ private struct ShellSidebar: View {
     }
 
     private var logo: some View {
-        Image(systemName: "music.note")
-            .font(.system(size: 19, weight: .bold))
-            .foregroundStyle(Color.splayerAccent)
+        Image("AppLogo")
+            .resizable()
+            .scaledToFit()
+            .frame(width: 32, height: 32)
             .frame(width: 38, height: 38)
-            .background(Color.splayerAccent.opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .accessibilityLabel("SPlayer-Next")
     }
 
     private func sidebarButton(_ section: AppSection) -> some View {
