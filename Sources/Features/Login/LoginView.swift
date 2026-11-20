@@ -1,9 +1,11 @@
 import SwiftUI
 import UIKit
+import CoreImage
 
 /// 登录：扫码 / 手机号验证码 / 邮箱验证码
 struct LoginView: View {
     @EnvironmentObject private var auth: AuthStore
+    @Environment(\.scenePhase) private var scenePhase
 
     private enum LoginMode: String, CaseIterable, Identifiable {
         case qr
@@ -29,6 +31,10 @@ struct LoginView: View {
     @State private var isLoadingQR = true
     @State private var qrError: String?
     @State private var pollTask: Task<Void, Never>?
+    /// 二维码请求代次，用于丢弃过期的异步结果
+    @State private var qrGeneration = 0
+    /// 轮询是否仍在运行
+    @State private var isPolling = false
 
     // 验证码
     @State private var phone = ""
@@ -93,7 +99,7 @@ struct LoginView: View {
             }
         }
         .onChange(of: showServerSettings) { _, isShowing in
-            if !isShowing, mode == .qr {
+            if !isShowing, mode == .qr, !isPolling {
                 Task { await startQR() }
             }
         }
@@ -101,15 +107,22 @@ struct LoginView: View {
             formError = nil
             formMessage = nil
             if newMode == .qr {
-                if qrImage == nil {
-                    Task { await startQR() }
-                }
+                Task { await startQR() }
             } else {
                 pollTask?.cancel()
+                pollTask = nil
+                isPolling = false
+            }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            // 回到前台后若轮询已停止，重新获取二维码，避免出现“有码但扫不动”
+            guard phase == .active, mode == .qr else { return }
+            if !isPolling && !isLoadingQR {
+                Task { await startQR() }
             }
         }
         .task {
-            if qrImage == nil {
+            if !isPolling {
                 await startQR()
             }
         }
@@ -385,7 +398,12 @@ struct LoginView: View {
     // MARK: - 操作
 
     private func startQR() async {
+        qrGeneration += 1
+        let generation = qrGeneration
+
         pollTask?.cancel()
+        pollTask = nil
+        isPolling = false
         isLoadingQR = true
         qrError = nil
         qrImage = nil
@@ -395,41 +413,76 @@ struct LoginView: View {
             let api = NeteaseAPI()
             let key = try await api.qrKey()
             let created = try await api.qrCreate(key: key)
+            // 期间用户可能已刷新或切换登录方式，丢弃过期的结果
+            guard generation == qrGeneration else { return }
+
             if let raw = created.image,
                let data = NeteaseAPI.imageData(fromDataURL: raw),
                let image = UIImage(data: data) {
                 qrImage = image
+            } else {
+                // 接口未返回图片时用 qrurl 在本地生成
+                qrImage = Self.makeQRImage(from: created.url)
             }
+
+            guard qrImage != nil else {
+                isLoadingQR = false
+                statusText = "二维码加载失败"
+                qrError = "请点击刷新二维码重试"
+                return
+            }
+
             statusText = "使用网易云音乐 App 扫码"
             isLoadingQR = false
-            poll(key: key)
+            poll(key: key, generation: generation)
         } catch {
+            guard generation == qrGeneration else { return }
             isLoadingQR = false
+            statusText = "二维码加载失败"
             qrError = error.localizedDescription
-            statusText = ""
         }
     }
 
-    private func poll(key: String) {
+    private func poll(key: String, generation: Int) {
+        isPolling = true
         pollTask = Task { @MainActor in
             let api = NeteaseAPI()
+            var interval: UInt64 = 2_000_000_000
+            var failureCount = 0
+
+            defer {
+                if generation == qrGeneration {
+                    isPolling = false
+                }
+            }
+
             while !Task.isCancelled {
+                guard generation == qrGeneration else { return }
                 do {
                     let result = try await api.qrCheck(key: key)
+                    guard generation == qrGeneration else { return }
+                    failureCount = 0
+                    qrError = nil
+
                     switch result.code {
                     case 800:
-                        statusText = "二维码已过期，请刷新"
+                        // 二维码已过期：自动换新，不需要用户手动点刷新
+                        statusText = "二维码已过期，正在刷新…"
+                        Task { await startQR() }
                         return
                     case 801:
                         statusText = "等待扫码"
+                        interval = 2_000_000_000
                     case 802:
                         statusText = "已扫码，请在手机上确认"
+                        interval = 1_000_000_000
                     case 803:
                         statusText = "登录成功"
                         if let cookie = result.cookie, !cookie.isEmpty {
                             await auth.signIn(cookie: cookie)
                         } else {
-                            qrError = "登录返回的 Cookie 为空，请重试"
+                            qrError = "登录信息无效，正在刷新二维码…"
+                            Task { await startQR() }
                         }
                         return
                     default:
@@ -437,15 +490,31 @@ struct LoginView: View {
                             statusText = message
                         }
                     }
-                    try await Task.sleep(nanoseconds: 2_000_000_000)
+                    try await Task.sleep(nanoseconds: interval)
                 } catch is CancellationError {
                     return
                 } catch {
-                    qrError = error.localizedDescription
-                    return
+                    // 网络异常时不放弃：保留当前二维码，退避后继续轮询
+                    guard generation == qrGeneration else { return }
+                    failureCount += 1
+                    statusText = "网络异常，正在重试…"
+                    let backoff = min(UInt64(failureCount), 5) * 1_000_000_000
+                    try? await Task.sleep(nanoseconds: backoff)
                 }
             }
         }
+    }
+
+    /// 用 CoreImage 在本地生成二维码图片
+    private static func makeQRImage(from string: String) -> UIImage? {
+        guard let filter = CIFilter(name: "CIQRCodeGenerator") else { return nil }
+        filter.setValue(Data(string.utf8), forKey: "inputMessage")
+        filter.setValue("M", forKey: "inputCorrectionLevel")
+        guard let output = filter.outputImage else { return nil }
+        let scaled = output.transformed(by: CGAffineTransform(scaleX: 10, y: 10))
+        let context = CIContext(options: nil)
+        guard let cgImage = context.createCGImage(scaled, from: scaled.extent) else { return nil }
+        return UIImage(cgImage: cgImage)
     }
 
     private func sendCode() async {
