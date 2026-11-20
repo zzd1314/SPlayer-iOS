@@ -1,0 +1,15 @@
+[package]
+name = "ncm_api_ios"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+name = "ncm_api_ios"
+crate-type = ["staticlib"]
+
+[dependencies]
+# api-enhanced 的 Rust 原生实现（含 weapi/eapi/linuxapi 加密与 Axum HTTP 服务）
+ncm-api-rs = { git = "https://github.com/SPlayer-Dev/ncm-api-rs", rev = "133b65bfe482e41ebccf018870d3fce07bf58eb3", features = ["server"] }
+tokio = { version = "1", features = ["rt-multi-thread", "net", "time", "io-util"] }
+axum = "0.8"

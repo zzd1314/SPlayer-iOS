@@ -12,3 +12,7 @@ build.log
 .DS_Store
 xcuserdata/
 *.xcscmblueprint
+
+# Rust 构建产物
+rust/target/
+rust/out/

@@ -35,6 +35,25 @@ targets:
         CODE_SIGNING_ALLOWED: "NO"
         CODE_SIGNING_REQUIRED: "NO"
         CODE_SIGN_IDENTITY: ""
+        # Rust 内置 API 静态库
+        LIBRARY_SEARCH_PATHS:
+          - $(inherited)
+          - $(SRCROOT)/rust/out/$(PLATFORM_NAME)
+        OTHER_LDFLAGS:
+          - $(inherited)
+          - -lncm_api_ios
+        SWIFT_OBJC_BRIDGING_HEADER: $(SRCROOT)/Config/NcmAPI-Bridging-Header.h
+        HEADER_SEARCH_PATHS:
+          - $(inherited)
+          - $(SRCROOT)/rust/include
+        ENABLE_USER_SCRIPT_SANDBOXING: "NO"
+    preBuildScripts:
+      - name: "构建 Rust 内置 API 静态库"
+        basedOnDependencyAnalysis: false
+        script: |
+          set -eu
+          export PATH="$HOME/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
+          bash "$SRCROOT/rust/build-ios.sh"
     dependencies:
       - target: SPlayerWidgets
         embed: true

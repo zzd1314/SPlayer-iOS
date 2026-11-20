@@ -12,6 +12,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Install Rust iOS targets
+        run: rustup target add aarch64-apple-ios aarch64-apple-ios-sim
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust -> target
+
       - name: Install XcodeGen
         run: brew install xcodegen
 
@@ -24,6 +32,11 @@ jobs:
 
       - name: Generate Xcode project
         run: xcodegen generate
+
+      - name: Build Rust API library
+        run: |
+          export PATH="$HOME/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
+          PLATFORM_NAME=iphoneos ARCHS=arm64 bash rust/build-ios.sh
 
       - name: Build unsigned IPA
         run: |
