@@ -10,6 +10,7 @@ struct LoginView: View {
     @State private var errorText: String?
     @State private var isLoading = true
     @State private var pollTask: Task<Void, Never>?
+    @State private var showServerSettings = false
 
     var body: some View {
         VStack(spacing: 20) {
@@ -61,15 +62,31 @@ struct LoginView: View {
 
             Spacer()
 
-            Button {
-                Task { await start() }
-            } label: {
-                Label("刷新二维码", systemImage: "arrow.clockwise")
+            HStack(spacing: 24) {
+                Button {
+                    Task { await start() }
+                } label: {
+                    Label("刷新二维码", systemImage: "arrow.clockwise")
+                }
+                .disabled(isLoading)
+
+                Button {
+                    showServerSettings = true
+                } label: {
+                    Label("服务器设置", systemImage: "server.rack")
+                }
             }
             .font(.footnote)
-            .disabled(isLoading)
         }
         .padding()
+        .sheet(isPresented: $showServerSettings) {
+            ServerSettingsView()
+        }
+        .onChange(of: showServerSettings) { _, isShowing in
+            if !isShowing {
+                Task { await start() }
+            }
+        }
         .task {
             if qrImage == nil {
                 await start()
