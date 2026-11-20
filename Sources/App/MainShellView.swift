@@ -221,6 +221,8 @@ struct MainShellView: View {
 private struct ShellSidebar: View {
     @EnvironmentObject private var router: ShellRouter
 
+    @ObservedObject private var updater = UpdateChecker.shared
+
     var body: some View {
         VStack(spacing: 4) {
             logo
@@ -238,15 +240,25 @@ private struct ShellSidebar: View {
                     router.showSettings = true
                 }
             } label: {
-                Image(systemName: "gearshape")
-                    .font(.system(size: 17, weight: .medium))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 38, height: 38)
-                    .contentShape(Rectangle())
+                ZStack(alignment: .topTrailing) {
+                    Image(systemName: "gearshape")
+                        .font(.system(size: 17, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 38, height: 38)
+                        .contentShape(Rectangle())
+
+                    if updater.hasUpdate {
+                        Circle()
+                            .fill(Color.splayerAccent)
+                            .frame(width: 7, height: 7)
+                            .padding(.top, 8)
+                            .padding(.trailing, 8)
+                    }
+                }
             }
             .buttonStyle(.plain)
             .padding(.bottom, 10)
-            .accessibilityLabel("设置")
+            .accessibilityLabel(updater.hasUpdate ? "设置，有新版本" : "设置")
         }
         .frame(maxHeight: .infinity)
         .background {

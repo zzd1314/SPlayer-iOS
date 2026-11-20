@@ -57,6 +57,9 @@ struct RootView: View {
             await player.applyAccount(userID: auth.profile?.userId)
             await player.restoreIfNeeded()
         }
+        .task {
+            await UpdateChecker.shared.autoCheckIfNeeded()
+        }
         .onChange(of: auth.cookie) { _, newValue in
             player.cookie = newValue
             guard newValue != nil else {
@@ -74,6 +77,7 @@ struct RootView: View {
             switch phase {
             case .active:
                 Task { await auth.refreshProfile() }
+                Task { await UpdateChecker.shared.autoCheckIfNeeded() }
             case .background:
                 player.persistPlaybackState()
                 player.syncNowPlaying()

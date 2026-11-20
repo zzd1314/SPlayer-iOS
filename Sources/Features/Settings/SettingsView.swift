@@ -793,7 +793,7 @@ private struct CacheSettingsView: View {
 // MARK: - 关于
 
 private struct AboutSettingsView: View {
-    @Environment(\.openURL) private var openURL
+    @ObservedObject private var updater = UpdateChecker.shared
 
     @AppStorage("updateChannel") private var updateChannel = "stable"
     @AppStorage("autoCheckUpdate") private var autoCheckUpdate = true
@@ -819,10 +819,6 @@ private struct AboutSettingsView: View {
     }
 
     private var appVersion: String { "\(shortVersion) (\(buildVersion))" }
-
-    private var releasesURL: URL {
-        URL(string: "https://github.com/zzd1314/SPlayer-iOS/releases")!
-    }
 
     private var repoURL: URL {
         URL(string: "https://github.com/SPlayer-Dev/SPlayer-Next")!
@@ -870,9 +866,34 @@ private struct AboutSettingsView: View {
                 .padding(.vertical, 6)
 
                 Button {
-                    openURL(releasesURL)
+                    Task { await updater.check(manual: true) }
                 } label: {
-                    Label("检查更新", systemImage: "arrow.triangle.2.circlepath")
+                    HStack {
+                        Label("检查更新", systemImage: "arrow.triangle.2.circlepath")
+                        Spacer(minLength: 8)
+                        if updater.state == .checking {
+                            ProgressView()
+                        } else if updater.hasUpdate, let release = updater.latestRelease {
+                            Text("发现 v\(release.version)")
+                                .font(.footnote)
+                                .foregroundStyle(Color.splayerAccent)
+                        }
+                    }
+                }
+                .disabled(updater.state == .checking)
+
+                if updater.hasUpdate, let release = updater.latestRelease {
+                    Button {
+                        updater.presentedRelease = release
+                    } label: {
+                        LabeledContent {
+                            Text("v\(release.version)")
+                                .font(.footnote.monospacedDigit())
+                                .foregroundStyle(.secondary)
+                        } label: {
+                            Label("查看新版本", systemImage: "sparkles")
+                        }
+                    }
                 }
             } header: {
                 Text("关于软件")
@@ -983,6 +1004,17 @@ private struct AboutSettingsView: View {
         .adaptiveListBackground()
         .navigationTitle("关于软件")
         .navigationBarTitleDisplayMode(.inline)
+        .onChange(of: updateChannel) { _, _ in
+            Task { await updater.check(manual: false) }
+        }
+        .sheet(item: $updater.presentedRelease) { release in
+            UpdateReleaseView(release: release)
+        }
+        .alert("检查更新", isPresented: updateAlertBinding) {
+            Button("好", role: .cancel) {}
+        } message: {
+            Text(updater.alertMessage ?? "")
+        }
         .confirmationDialog("重置全部设置？", isPresented: $showResetConfirm, titleVisibility: .visible) {
             Button("重置", role: .destructive) {
                 AppSettings.resetAll()
@@ -1025,6 +1057,170 @@ private struct AboutSettingsView: View {
             try? await Task.sleep(nanoseconds: 1_500_000_000)
             copied = false
         }
+    }
+
+    @MainActor
+    private var updateAlertBinding: Binding<Bool> {
+        Binding(
+            get: { updater.alertMessage != nil },
+            set: { if !$0 { updater.alertMessage = nil } }
+        )
+    }
+}
+
+// MARK: - 更新说明
+
+/// 新版本说明弹窗：版本信息、更新内容与未签名 IPA 安装提示
+private struct UpdateReleaseView: View {
+    let release: AppRelease
+
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.openURL) private var openURL
+
+    private var noteLines: [String] {
+        guard let body = release.body else { return [] }
+        return body
+            .components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+    }
+
+    private var publishedText: String? {
+        guard let date = release.publishedAt else { return nil }
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .none
+        return formatter.string(from: date)
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    header
+                    notesSection
+                    installHint
+                }
+                .padding(20)
+            }
+            .background(Color(.systemGroupedBackground))
+            .navigationTitle("发现新版本")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("关闭") { dismiss() }
+                }
+            }
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                actionBar
+            }
+        }
+    }
+
+    private var header: some View {
+        HStack(spacing: 14) {
+            Image("AppLogo")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 52, height: 52)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("SPlayer-Next v\(release.version)")
+                    .font(.headline)
+
+                HStack(spacing: 8) {
+                    if release.prerelease {
+                        Text("测试版")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.orange)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 2)
+                            .background(Color.orange.opacity(0.15), in: Capsule())
+                    }
+                    if let publishedText {
+                        Text(publishedText)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+
+            Spacer(minLength: 0)
+        }
+    }
+
+    @ViewBuilder
+    private var notesSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("更新内容")
+                .font(.headline)
+
+            if noteLines.isEmpty {
+                Text("该版本未提供更新说明。")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            } else {
+                VStack(alignment: .leading, spacing: 7) {
+                    ForEach(noteLines.indices, id: \.self) { index in
+                        Text(noteLines[index])
+                            .font(.subheadline)
+                            .foregroundStyle(.primary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+                .padding(14)
+                .background(
+                    Color(.secondarySystemGroupedBackground),
+                    in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+                )
+            }
+        }
+    }
+
+    private var installHint: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "info.circle")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .padding(.top, 1)
+
+            Text("iOS 无法在应用内直接安装更新。请下载未签名 IPA 后，使用 Sideloadly 或 AltStore 重新签名覆盖安装，账号与本地数据会保留。")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        }
+        .padding(12)
+        .background(
+            Color.splayerAccent.opacity(0.08),
+            in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+        )
+    }
+
+    private var actionBar: some View {
+        VStack(spacing: 8) {
+            Button {
+                openURL(release.ipaURL ?? release.htmlURL)
+            } label: {
+                Label(
+                    release.ipaURL == nil ? "打开发布页" : "下载未签名 IPA",
+                    systemImage: release.ipaURL == nil ? "safari" : "arrow.down.circle"
+                )
+                .font(.body.weight(.semibold))
+                .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+
+            if release.ipaURL != nil {
+                Button("打开发布页") {
+                    openURL(release.htmlURL)
+                }
+                .font(.footnote)
+            }
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 12)
+        .background(.bar)
     }
 }
 
