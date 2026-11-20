@@ -44,7 +44,8 @@ struct CommentItem: Decodable, Identifiable {
     let commentId: Int
     let content: String
     let time: Int?
-    let likedCount: Int?
+    var likedCount: Int?
+    var liked: Bool?
     let user: User?
 
     var id: Int { commentId }
@@ -87,8 +88,8 @@ extension NeteaseAPI {
         }
     }
 
-    /// 已关注歌手 id 集合
-    func subscribedArtistIDs(cookie: String) async throws -> Set<Int> {
+    /// 已关注歌手列表
+    func subscribedArtists(cookie: String) async throws -> [ArtistSummary] {
         let response: ArtistSublistResponse = try await get(
             "/artist/sublist",
             query: ["limit": "1000", "offset": "0"],
@@ -97,7 +98,12 @@ extension NeteaseAPI {
         guard response.code == 200 else {
             throw APIError.business(code: response.code, message: "获取关注歌手失败")
         }
-        return Set((response.artists ?? response.data ?? []).map(\.id))
+        return response.artists ?? response.data ?? []
+    }
+
+    /// 已关注歌手 id 集合
+    func subscribedArtistIDs(cookie: String) async throws -> Set<Int> {
+        Set(try await subscribedArtists(cookie: cookie).map(\.id))
     }
 
     /// 关注 / 取消关注歌手
@@ -131,5 +137,45 @@ extension NeteaseAPI {
             throw APIError.business(code: response.code, message: "获取评论失败")
         }
         return (response.hotComments ?? [], response.comments ?? [], response.total ?? 0)
+    }
+
+    /// 评论点赞 / 取消点赞
+    func setCommentLiked(songId: Int, commentId: Int, like: Bool, cookie: String) async throws {
+        let response: OperationResponse = try await get(
+            "/comment/like",
+            query: [
+                "id": String(songId),
+                "cid": String(commentId),
+                "t": like ? "1" : "0",
+                "type": "0"
+            ],
+            cookie: cookie
+        )
+        guard response.code == 200 else {
+            throw APIError.business(
+                code: response.code,
+                message: response.message ?? response.msg ?? "评论点赞失败"
+            )
+        }
+    }
+
+    /// 发表歌曲评论
+    func sendComment(songId: Int, content: String, cookie: String) async throws {
+        let response: OperationResponse = try await get(
+            "/comment",
+            query: [
+                "t": "1",
+                "type": "0",
+                "id": String(songId),
+                "content": content
+            ],
+            cookie: cookie
+        )
+        guard response.code == 200 else {
+            throw APIError.business(
+                code: response.code,
+                message: response.message ?? response.msg ?? "评论发送失败"
+            )
+        }
     }
 }

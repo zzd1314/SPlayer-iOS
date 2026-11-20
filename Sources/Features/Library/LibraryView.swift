@@ -92,7 +92,13 @@ struct LibraryView: View {
     }
 
     private var quickLinks: some View {
-        HStack(spacing: 12) {
+        LazyVGrid(
+            columns: [
+                GridItem(.flexible(), spacing: 12),
+                GridItem(.flexible())
+            ],
+            spacing: 12
+        ) {
             quickLink(
                 title: "我喜欢的音乐",
                 subtitle: "\(player.likedSongIds.count) 首",
@@ -109,6 +115,15 @@ struct LibraryView: View {
                 color: .blue
             ) {
                 RecentPlaysView()
+            }
+
+            quickLink(
+                title: "关注歌手",
+                subtitle: "查看已关注",
+                systemImage: "person.2.fill",
+                color: .purple
+            ) {
+                FollowedArtistsView()
             }
         }
     }

@@ -20,6 +20,7 @@ SPlayer-Next（[SPlayer-Dev/SPlayer-Next](https://github.com/SPlayer-Dev/SPlayer
 - [x] M9 搜索分类（单曲 / 歌手 / 专辑 / 歌单）+ 歌手 / 专辑详情页
 - [x] M10 歌曲列表快捷收藏 + 歌曲 / 歌单 / 歌手 / 专辑分享
 - [x] M11 关注歌手 / 收藏歌单 / 歌曲评论 / 播放队列拖拽排序
+- [x] M12 关注歌手列表 / 歌单内搜索 / 评论点赞与发送 / 首页换一批
 
 ## 构建
 

@@ -7,6 +7,8 @@ struct HomeView: View {
 
     @State private var dailySongs: [Song] = []
     @State private var playlists: [Playlist] = []
+    @State private var playlistPool: [Playlist] = []
+    @State private var isShufflingPlaylists = false
     @State private var toplists: [Playlist] = []
     @State private var isLoading = false
     @State private var loadedOnce = false
@@ -93,6 +95,17 @@ struct HomeView: View {
                     .font(.title3.weight(.semibold))
                 Spacer()
                 Button {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        dailySongs.shuffle()
+                    }
+                } label: {
+                    Label("换一批", systemImage: "arrow.triangle.2.circlepath")
+                        .font(.caption.weight(.medium))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(Color.splayerAccent)
+
+                Button {
                     Task { await player.play(dailySongs, startAt: 0) }
                 } label: {
                     Label("播放全部", systemImage: "play.fill")
@@ -123,8 +136,22 @@ struct HomeView: View {
 
     private var playlistSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label("推荐歌单", systemImage: "square.stack.fill")
-                .font(.title3.weight(.semibold))
+            HStack {
+                Label("推荐歌单", systemImage: "square.stack.fill")
+                    .font(.title3.weight(.semibold))
+
+                Spacer()
+
+                Button {
+                    Task { await shufflePlaylists() }
+                } label: {
+                    Label("换一批", systemImage: "arrow.triangle.2.circlepath")
+                        .font(.caption.weight(.medium))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(Color.splayerAccent)
+                .disabled(isShufflingPlaylists)
+            }
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(alignment: .top, spacing: 12) {
@@ -193,7 +220,8 @@ struct HomeView: View {
         }
 
         do {
-            playlists = try await api.personalizedPlaylists(limit: 12, cookie: cookie)
+            playlistPool = try await api.personalizedPlaylists(limit: 30, cookie: cookie)
+            playlists = Array(playlistPool.prefix(12))
         } catch {
             errors.append("推荐歌单：\(error.localizedDescription)")
         }
@@ -206,6 +234,21 @@ struct HomeView: View {
 
         if dailySongs.isEmpty, playlists.isEmpty, toplists.isEmpty {
             errorText = errors.first ?? "暂无内容，请稍后重试"
+        }
+    }
+
+    private func shufflePlaylists() async {
+        guard !isShufflingPlaylists else { return }
+        isShufflingPlaylists = true
+        defer { isShufflingPlaylists = false }
+
+        if playlistPool.count < 24,
+           let list = try? await NeteaseAPI().personalizedPlaylists(limit: 30, cookie: auth.cookie) {
+            playlistPool = list
+        }
+        guard !playlistPool.isEmpty else { return }
+        withAnimation(.easeInOut(duration: 0.2)) {
+            playlists = Array(playlistPool.shuffled().prefix(12))
         }
     }
 }

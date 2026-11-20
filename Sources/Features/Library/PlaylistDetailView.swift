@@ -14,6 +14,7 @@ struct PlaylistDetailView: View {
     @State private var isSubscribed = false
     @State private var isSubscribing = false
     @State private var actionError: String?
+    @State private var filterText = ""
 
     var body: some View {
         List {
@@ -23,7 +24,7 @@ struct PlaylistDetailView: View {
             }
 
             Section {
-                ForEach(Array(songs.enumerated()), id: \.offset) { index, song in
+                ForEach(Array(visibleSongs.enumerated()), id: \.offset) { index, song in
                     SongRow(index: index + 1, song: song, showsLikeButton: true)
                         .foregroundStyle(player.currentSong?.id == song.id ? Color.splayerAccent : Color.primary)
                         .contentShape(Rectangle())
@@ -39,9 +40,17 @@ struct PlaylistDetailView: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 24)
                 }
+
+                if !songs.isEmpty, visibleSongs.isEmpty {
+                    Text("没有匹配的歌曲")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 24)
+                }
             } header: {
-                if !songs.isEmpty {
-                    Text("\(songs.count) 首歌曲")
+                if !visibleSongs.isEmpty {
+                    Text("\(visibleSongs.count) 首歌曲")
                 }
             }
         }
@@ -49,6 +58,7 @@ struct PlaylistDetailView: View {
         .adaptiveListBackground()
         .navigationTitle(playlist.name)
         .navigationBarTitleDisplayMode(.inline)
+        .searchable(text: $filterText, prompt: "在歌单中搜索")
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
@@ -67,10 +77,10 @@ struct PlaylistDetailView: View {
                     }
                 }
             }
-            if !songs.isEmpty {
+            if !visibleSongs.isEmpty {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
-                        Task { await player.play(songs, startAt: 0) }
+                        Task { await player.play(visibleSongs, startAt: 0) }
                     } label: {
                         Label("播放全部", systemImage: "play.fill")
                     }
@@ -131,12 +141,22 @@ struct PlaylistDetailView: View {
         .padding(.vertical, 4)
     }
 
+    private var visibleSongs: [Song] {
+        let keyword = filterText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !keyword.isEmpty else { return songs }
+        return songs.filter { song in
+            song.name.lowercased().contains(keyword)
+                || song.artistText.lowercased().contains(keyword)
+                || (song.albumName?.lowercased().contains(keyword) ?? false)
+        }
+    }
+
     private func play(_ song: Song) {
         Task {
             if AppSettings.songListPlayBehavior == "current" {
                 await player.play([song], startAt: 0)
             } else {
-                await player.play(song: song, in: songs)
+                await player.play(song: song, in: visibleSongs)
             }
         }
     }
