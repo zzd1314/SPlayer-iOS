@@ -63,11 +63,53 @@ struct NeteaseAPI {
                 }
                 return (data, response)
             } catch {
-                guard attempt < retries, isTransient(error) else { throw error }
-                attempt += 1
-                try? await Task.sleep(nanoseconds: UInt64(attempt) * 600_000_000)
+                if isTransient(error), attempt < retries {
+                    attempt += 1
+                    try? await Task.sleep(nanoseconds: UInt64(attempt) * 600_000_000)
+                    continue
+                }
+                // 本地服务连不上：可能是长时间休眠后监听失效，重启服务后用新端口再试一次
+                if let url = request.url,
+                   url.host == "127.0.0.1",
+                   shouldRecover(error),
+                   let retried = await retryAfterRecovery(request) {
+                    return retried
+                }
+                throw error
             }
         }
+    }
+
+    /// 只有"服务无响应/拒绝连接"这类错误才值得重启本地服务
+    private static func shouldRecover(_ error: Error) -> Bool {
+        let ns = error as NSError
+        guard ns.domain == NSURLErrorDomain else { return false }
+        switch ns.code {
+        case NSURLErrorCannotConnectToHost,
+             NSURLErrorCannotFindHost,
+             NSURLErrorNetworkConnectionLost:
+            return true
+        default:
+            return false
+        }
+    }
+
+    /// 重启本地服务，并把请求切到新端口用全新会话重试
+    private static func retryAfterRecovery(_ request: URLRequest) async -> (Data, URLResponse)? {
+        await BuiltinAPIService.shared.recoverIfNeeded()
+        guard let base = BuiltinAPIService.shared.baseURL,
+              var components = URLComponents(string: base),
+              let old = request.url.flatMap({ URLComponents(url: $0, resolvingAgainstBaseURL: false) })
+        else { return nil }
+        components.path = old.path
+        components.percentEncodedQuery = old.percentEncodedQuery
+        guard let url = components.url else { return nil }
+
+        var newRequest = request
+        newRequest.url = url
+        let fresh = URLSession(configuration: session.configuration)
+        defer { fresh.finishTasksAndInvalidate() }
+        return try? await fresh.data(for: newRequest)
     }
 
     /// 休眠唤醒、切换网络时常见的瞬时错误，值得立即重试

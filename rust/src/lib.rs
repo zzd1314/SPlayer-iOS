@@ -145,6 +145,10 @@ pub extern "C" fn ncm_start_server(preferred_port: u16) -> i32 {
                     .layer(from_fn(normalize_login_response));
                 let _ = axum::serve(listener, app).await;
             });
+
+            // 监听意外结束时复位状态，允许后续重新启动
+            STARTED.store(false, Ordering::SeqCst);
+            PORT.store(0, Ordering::SeqCst);
         });
 
     if spawned.is_err() {
@@ -160,4 +164,17 @@ pub extern "C" fn ncm_start_server(preferred_port: u16) -> i32 {
 #[no_mangle]
 pub extern "C" fn ncm_server_port() -> u16 {
     PORT.load(Ordering::SeqCst)
+}
+
+/// 强制重启内置 API 服务。
+///
+/// 长时间休眠后旧监听可能已经失去响应，仅重试请求无法恢复，需要重新监听。
+/// 旧监听线程无法安全停止：优先重新绑定 `preferred_port`，
+/// 若仍被旧服务占用则由 `bind_local` 回退到系统分配端口。
+/// 返回新端口（大于 0），失败时返回负错误码。
+#[no_mangle]
+pub extern "C" fn ncm_restart_server(preferred_port: u16) -> i32 {
+    STARTED.store(false, Ordering::SeqCst);
+    PORT.store(0, Ordering::SeqCst);
+    ncm_start_server(preferred_port)
 }

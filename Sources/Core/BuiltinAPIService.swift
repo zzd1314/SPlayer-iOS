@@ -40,12 +40,51 @@ final class BuiltinAPIService {
         return true
     }
 
-    /// 前台恢复时预热连接
+    /// 探活专用会话：不复用连接，避免把失效的连接池误判成服务可用
+    private let probeSession: URLSession = {
+        let config = URLSessionConfiguration.ephemeral
+        config.timeoutIntervalForRequest = 3
+        config.timeoutIntervalForResource = 5
+        config.waitsForConnectivity = false
+        config.requestCachePolicy = .reloadIgnoringLocalCacheData
+        return URLSession(configuration: config)
+    }()
+
+    /// 回到前台、或请求连不上本地服务时调用。
     ///
-    /// 设备长时间休眠后，URLSession 复用池里的连接可能已经失效，
-    /// 这里先用一个轻量请求把连接建好，避免用户点播放时才遇到首个请求失败。
-    func warmUp() async {
-        let base = baseURL ?? AppSettings.baseURL
-        _ = try? await NeteaseAPI(baseURL: base).getData("/login/status")
+    /// 设备长时间休眠后本地监听可能已经失效，此时仅重试请求没有用：
+    /// 先探活，确认连不上就强制重启服务，并更新为新端口。
+    func recoverIfNeeded() async {
+        let current = baseURL ?? AppSettings.baseURL
+        if await probe(current) { return }
+
+        let result = ncm_restart_server(3000)
+        guard result > 0 else {
+            lastError = "内置 API 服务重启失败（错误码 \(result)）"
+            return
+        }
+
+        lock.lock()
+        port = UInt16(result)
+        baseURL = "http://127.0.0.1:\(result)"
+        lastError = nil
+        lock.unlock()
+
+        _ = await probe(baseURL ?? current)
+    }
+
+    /// 轻量探活：收到任意 HTTP 响应即视为服务可用
+    private func probe(_ base: String) async -> Bool {
+        guard let url = URL(string: base + "/login/status") else { return false }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 3
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        request.setValue("close", forHTTPHeaderField: "Connection")
+        do {
+            _ = try await probeSession.data(for: request)
+            return true
+        } catch {
+            return false
+        }
     }
 }

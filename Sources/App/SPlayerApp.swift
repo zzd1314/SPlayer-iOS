@@ -15,8 +15,8 @@ struct SPlayerApp: App {
         }
         .onChange(of: scenePhase) { phase in
             guard phase == .active else { return }
-            // 休眠唤醒后重建到本地服务的连接，避免首个请求命中失效连接
-            Task { await BuiltinAPIService.shared.warmUp() }
+            // 休眠唤醒后本地监听可能失效：探活并在必要时重启本地服务
+            Task { await BuiltinAPIService.shared.recoverIfNeeded() }
         }
     }
 }
