@@ -167,6 +167,25 @@ struct UserSummary: Decodable, Identifiable, Hashable {
     var id: Int { userId }
 }
 
+/// MV 摘要
+struct MVSummary: Decodable, Identifiable, Hashable {
+    let id: Int
+    let name: String
+    let cover: String?
+    let artistName: String?
+    let playCount: Int?
+    let duration: Int?
+}
+
+/// 听歌排行记录
+struct PlayRecord: Decodable, Identifiable {
+    let playCount: Int?
+    let score: Int?
+    let song: Song?
+
+    var id: Int { song?.id ?? 0 }
+}
+
 // MARK: - 分享链接
 
 extension Song {

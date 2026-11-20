@@ -24,6 +24,7 @@ struct UserProfileView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 header
+                listenRankLink
 
                 if !playlists.isEmpty {
                     Text("歌单")
@@ -155,6 +156,36 @@ struct UserProfileView: View {
     private var canFollow: Bool {
         guard auth.isLoggedIn, let myId = auth.profile?.userId else { return false }
         return myId != userId
+    }
+
+    private var listenRankLink: some View {
+        NavigationLink {
+            ListenRankView(userId: userId)
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "chart.bar.fill")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(Color.splayerAccent)
+                    .frame(width: 34, height: 34)
+                    .background(
+                        Color.splayerAccent.opacity(0.14),
+                        in: RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    )
+
+                Text("听歌排行")
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.primary)
+
+                Spacer(minLength: 0)
+
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+            .padding(10)
+            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+        .buttonStyle(.plain)
     }
 
     private func statText(_ title: String, _ count: Int?) -> some View {

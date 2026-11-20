@@ -31,6 +31,13 @@ struct UserFollowedsResponse: Decodable {
     let followeds: [UserSummary]?
 }
 
+/// 听歌排行（/user/record）
+struct UserRecordResponse: Decodable {
+    let code: Int
+    let allData: [PlayRecord]?
+    let weekData: [PlayRecord]?
+}
+
 /// 已关注歌手列表（/artist/sublist），兼容 artists / data 两种返回
 struct ArtistSublistResponse: Decodable {
     let code: Int
@@ -189,6 +196,19 @@ extension NeteaseAPI {
                 message: response.message ?? response.msg ?? "关注操作失败"
             )
         }
+    }
+
+    /// 听歌排行：type 0 全部时间，1 最近一周
+    func userRecords(uid: Int, type: Int, cookie: String?) async throws -> [PlayRecord] {
+        let response: UserRecordResponse = try await get(
+            "/user/record",
+            query: ["uid": String(uid), "type": String(type)],
+            cookie: cookie
+        )
+        guard response.code == 200 else {
+            throw APIError.business(code: response.code, message: "获取听歌排行失败")
+        }
+        return type == 0 ? (response.allData ?? []) : (response.weekData ?? [])
     }
 
     /// 收藏 / 取消收藏歌单

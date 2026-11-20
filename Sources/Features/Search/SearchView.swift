@@ -6,11 +6,12 @@ private enum SearchCategory: String, CaseIterable, Identifiable {
     case artists = "歌手"
     case albums = "专辑"
     case playlists = "歌单"
+    case mvs = "MV"
 
     var id: String { rawValue }
 }
 
-/// 搜索：单曲 / 歌手 / 专辑 / 歌单（/cloudsearch type=1/100/10/1000）
+/// 搜索：单曲 / 歌手 / 专辑 / 歌单 / MV（/cloudsearch type=1/100/10/1000/1004）
 struct SearchView: View {
     @EnvironmentObject private var auth: AuthStore
     @EnvironmentObject private var player: PlayerStore
@@ -21,6 +22,7 @@ struct SearchView: View {
     @State private var artists: [ArtistSummary] = []
     @State private var albums: [AlbumSummary] = []
     @State private var playlists: [Playlist] = []
+    @State private var mvs: [MVSummary] = []
     @State private var isSearching = false
     @State private var errorText: String?
     @State private var lastQuery: String?
@@ -40,7 +42,7 @@ struct SearchView: View {
                 content
             }
             .navigationTitle("搜索")
-            .searchable(text: $query, prompt: "歌曲 / 歌手 / 专辑 / 歌单")
+            .searchable(text: $query, prompt: "歌曲 / 歌手 / 专辑 / 歌单 / MV")
             .onSubmit(of: .search) {
                 Task { await search() }
             }
@@ -98,7 +100,7 @@ struct SearchView: View {
                 ContentUnavailableView(
                     "搜索",
                     systemImage: "magnifyingglass",
-                    description: Text("输入关键词搜索歌曲、歌手、专辑或歌单")
+                    description: Text("输入关键词搜索歌曲、歌手、专辑、歌单或 MV")
                 )
             }
         } else {
@@ -171,6 +173,23 @@ struct SearchView: View {
             }
             .listStyle(.plain)
             .adaptiveListBackground()
+
+        case .mvs:
+            List {
+                Section {
+                    ForEach(mvs) { mv in
+                        NavigationLink {
+                            MVPlayerView(mv: mv)
+                        } label: {
+                            MVRow(mv: mv)
+                        }
+                    }
+                } header: {
+                    Text("找到 \(mvs.count) 个 MV")
+                }
+            }
+            .listStyle(.plain)
+            .adaptiveListBackground()
         }
     }
 
@@ -180,6 +199,7 @@ struct SearchView: View {
         case .artists: return artists.isEmpty
         case .albums: return albums.isEmpty
         case .playlists: return playlists.isEmpty
+        case .mvs: return mvs.isEmpty
         }
     }
 
@@ -218,6 +238,8 @@ struct SearchView: View {
                 albums = try await api.searchAlbums(keywords: keyword, cookie: cookie)
             case .playlists:
                 playlists = try await api.searchPlaylists(keywords: keyword, cookie: cookie)
+            case .mvs:
+                mvs = try await api.searchMVs(keywords: keyword, cookie: cookie)
             }
         } catch {
             switch current {
@@ -225,6 +247,7 @@ struct SearchView: View {
             case .artists: artists = []
             case .albums: albums = []
             case .playlists: playlists = []
+            case .mvs: mvs = []
             }
             if current == category {
                 errorText = error.localizedDescription
@@ -337,5 +360,43 @@ private struct PlaylistRow: View {
             parts.append("\(count) 首")
         }
         return parts.isEmpty ? "歌单" : parts.joined(separator: " · ")
+    }
+}
+
+private struct MVRow: View {
+    let mv: MVSummary
+
+    var body: some View {
+        HStack(spacing: 12) {
+            CoverImage(urlString: mv.cover, size: 52, cornerRadius: 8)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(mv.name)
+                    .font(.body)
+                    .lineLimit(1)
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .contentShape(Rectangle())
+    }
+
+    private var subtitle: String {
+        var parts: [String] = []
+        if let artist = mv.artistName, !artist.isEmpty {
+            parts.append(artist)
+        }
+        if let count = mv.playCount, count > 0 {
+            if count >= 10000 {
+                parts.append(String(format: "%.1f 万次播放", Double(count) / 10000))
+            } else {
+                parts.append("\(count) 次播放")
+            }
+        }
+        return parts.isEmpty ? "MV" : parts.joined(separator: " · ")
     }
 }

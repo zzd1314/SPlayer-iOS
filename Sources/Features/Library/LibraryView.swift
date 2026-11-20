@@ -204,6 +204,15 @@ struct LibraryView: View {
             ) {
                 FollowedArtistsView()
             }
+
+            quickLink(
+                title: "我的云盘",
+                subtitle: "云端歌曲",
+                systemImage: "cloud.fill",
+                color: .teal
+            ) {
+                CloudMusicView()
+            }
         }
     }
 

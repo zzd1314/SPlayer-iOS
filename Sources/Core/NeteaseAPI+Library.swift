@@ -9,6 +9,41 @@ struct CreatePlaylistResponse: Decodable {
     let playlist: Playlist?
 }
 
+/// MV 搜索（cloudsearch type=1004）
+struct MVSearchResponse: Decodable {
+    struct Result: Decodable {
+        let mvs: [MVSummary]?
+    }
+
+    let code: Int
+    let result: Result?
+}
+
+/// MV 地址（/mv/url）
+struct MVURLResponse: Decodable {
+    struct Payload: Decodable {
+        let url: String?
+    }
+
+    let code: Int
+    let data: Payload?
+}
+
+/// 云盘歌曲（/user/cloud）
+struct CloudMusicResponse: Decodable {
+    struct Item: Decodable {
+        let songId: Int?
+        let songName: String?
+        let artist: String?
+        let album: String?
+        let simpleSong: Song?
+    }
+
+    let code: Int
+    let data: [Item]?
+    let count: Int?
+}
+
 extension NeteaseAPI {
     /// 用户歌单列表
     func userPlaylists(uid: Int, cookie: String?) async throws -> [Playlist] {
@@ -96,5 +131,57 @@ extension NeteaseAPI {
                 message: response.message ?? response.msg ?? "删除歌单失败"
             )
         }
+    }
+
+    /// MV 搜索
+    func searchMVs(
+        keywords: String,
+        limit: Int = 30,
+        offset: Int = 0,
+        cookie: String? = nil
+    ) async throws -> [MVSummary] {
+        let response: MVSearchResponse = try await get(
+            "/cloudsearch",
+            query: [
+                "keywords": keywords,
+                "type": "1004",
+                "limit": String(limit),
+                "offset": String(offset)
+            ],
+            cookie: cookie
+        )
+        guard response.code == 200 else {
+            throw APIError.business(code: response.code, message: "搜索 MV 失败")
+        }
+        return response.result?.mvs ?? []
+    }
+
+    /// MV 播放地址
+    func mvURL(id: Int, cookie: String? = nil) async throws -> URL? {
+        let response: MVURLResponse = try await get(
+            "/mv/url",
+            query: ["id": String(id), "r": "1080"],
+            cookie: cookie
+        )
+        guard response.code == 200 else {
+            throw APIError.business(code: response.code, message: "获取 MV 地址失败")
+        }
+        guard let raw = response.data?.url, let url = URL(string: raw) else {
+            return nil
+        }
+        return url
+    }
+
+    /// 云盘歌曲（仅返回带 simpleSong 的可播放项）
+    func cloudSongs(cookie: String) async throws -> [Song] {
+        let response: CloudMusicResponse = try await get(
+            "/user/cloud",
+            query: ["limit": "200", "offset": "0"],
+            cookie: cookie
+        )
+        guard response.code == 200 else {
+            throw APIError.business(code: response.code, message: "获取云盘失败")
+        }
+        return (response.data ?? []).compactMap(\.simpleSong)
     }
 }
