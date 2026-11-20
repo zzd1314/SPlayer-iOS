@@ -192,14 +192,13 @@ struct LikedSongsView: View {
         do {
             let api = NeteaseAPI()
             let allIds = try await api.likeList(uid: uid, cookie: cookie)
-            let allSet = Set(allIds)
 
-            // 与桌面端一致：按歌单详情返回的曲目数组顺序展示（最新收藏在前）
+            // 与桌面端一致：按歌单详情返回的曲目数组顺序展示（最新收藏在前），不做额外过滤
             var orderedIds: [Int] = []
             var seen = Set<Int>()
             let detailIds = (try? await api.likedPlaylistTrackIDs(uid: uid, cookie: cookie)) ?? []
-            for id in detailIds where allSet.contains(id) {
-                if seen.insert(id).inserted { orderedIds.append(id) }
+            for id in detailIds where seen.insert(id).inserted {
+                orderedIds.append(id)
             }
             // 兜底：歌单详情不可用时回退到 likelist 顺序
             if orderedIds.isEmpty {
