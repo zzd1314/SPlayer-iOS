@@ -38,7 +38,8 @@ jobs:
       - name: Build Rust API library
         run: |
           export PATH="$HOME/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
-          PLATFORM_NAME=iphoneos ARCHS=arm64 bash rust/build-ios.sh
+          set -o pipefail
+          PLATFORM_NAME=iphoneos ARCHS=arm64 bash rust/build-ios.sh 2>&1 | tee rust-build.log
 
       - name: Build unsigned IPA
         run: |
@@ -88,12 +89,28 @@ jobs:
           path: SPlayer-iOS-unsigned.ipa
           retention-days: 30
 
+      - name: Show build error
+        if: failure()
+        run: |
+          set -euo pipefail
+          for f in rust-build.log build.log; do
+            if [ -f "$f" ]; then
+              echo "## ${f} 末尾输出" >> "$GITHUB_STEP_SUMMARY"
+              echo '```' >> "$GITHUB_STEP_SUMMARY"
+              tail -80 "$f" >> "$GITHUB_STEP_SUMMARY" || true
+              echo '```' >> "$GITHUB_STEP_SUMMARY"
+            fi
+          done
+
       - name: Upload build log on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: build-log
-          path: build.log
+          path: |
+            build.log
+            rust-build.log
+          if-no-files-found: ignore
           retention-days: 7
 
       - name: Publish GitHub Release
