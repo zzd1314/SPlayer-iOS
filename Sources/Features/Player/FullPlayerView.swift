@@ -293,7 +293,7 @@ struct FullPlayerView: View {
         VStack(spacing: 8) {
             progressSection
 
-            HStack(spacing: 20) {
+            HStack(spacing: 14) {
                 Button {
                     Task { await toggleLike() }
                 } label: {
@@ -335,7 +335,7 @@ struct FullPlayerView: View {
                     player.togglePlayPause()
                 } label: {
                     Image(systemName: player.isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                        .font(.system(size: 54, weight: .regular))
+                        .font(.system(size: 48, weight: .regular))
                         .foregroundStyle(.white)
                         .shadow(color: .black.opacity(0.3), radius: 10, y: 5)
                 }
