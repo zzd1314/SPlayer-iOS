@@ -135,6 +135,8 @@ struct AlbumSummary: Decodable, Identifiable, Hashable {
     let artist: Artist?
     let size: Int?
     let publishTime: Int?
+    /// 当前账号是否已收藏该专辑（登录后由 /album 返回）
+    let isSub: Bool?
 }
 
 extension AlbumSummary {
@@ -153,6 +155,16 @@ extension AlbumSummary {
     var publishYearText: String? {
         publishDateText.map { String($0.prefix(4)) }
     }
+}
+
+/// 用户摘要（关注 / 粉丝列表）
+struct UserSummary: Decodable, Identifiable, Hashable {
+    let userId: Int
+    let nickname: String
+    let avatarUrl: String?
+    let signature: String?
+
+    var id: Int { userId }
 }
 
 // MARK: - 分享链接

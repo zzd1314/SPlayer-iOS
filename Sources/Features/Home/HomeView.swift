@@ -19,6 +19,7 @@ struct HomeView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 26) {
                     greeting
+                    fmEntry
 
                     if !dailySongs.isEmpty {
                         dailySection
@@ -84,6 +85,40 @@ struct HomeView: View {
         case 12..<18: return "下午好"
         default: return "晚上好"
         }
+    }
+
+    // MARK: - 私人 FM 入口
+
+    private var fmEntry: some View {
+        NavigationLink {
+            PersonalFMView()
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "radio.fill")
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundStyle(Color.splayerAccent)
+                    .frame(width: 44, height: 44)
+                    .background(Color.splayerAccent.opacity(0.14), in: Circle())
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("私人 FM")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                    Text("根据你的口味不间断推荐")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer(minLength: 0)
+
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+            .padding(12)
+            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - 每日推荐

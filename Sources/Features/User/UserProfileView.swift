@@ -12,6 +12,9 @@ struct UserProfileView: View {
     @State private var isLoading = false
     @State private var loadedOnce = false
     @State private var errorText: String?
+    @State private var isFollowed = false
+    @State private var isFollowBusy = false
+    @State private var actionError: String?
 
     private let columns = [
         GridItem(.adaptive(minimum: 150, maximum: 220), spacing: 16, alignment: .top)
@@ -76,6 +79,14 @@ struct UserProfileView: View {
                 }
             }
         }
+        .alert("操作失败", isPresented: Binding(
+            get: { actionError != nil },
+            set: { if !$0 { actionError = nil } }
+        )) {
+            Button("好", role: .cancel) {}
+        } message: {
+            Text(actionError ?? "")
+        }
     }
 
     private var header: some View {
@@ -96,11 +107,42 @@ struct UserProfileView: View {
 
                 if let profile {
                     HStack(spacing: 14) {
-                        statText("关注", profile.follows)
-                        statText("粉丝", profile.followeds)
+                        NavigationLink {
+                            UserRelationView(userId: profile.userId, kind: .following)
+                        } label: {
+                            statText("关注", profile.follows)
+                        }
+                        .buttonStyle(.plain)
+
+                        NavigationLink {
+                            UserRelationView(userId: profile.userId, kind: .followers)
+                        } label: {
+                            statText("粉丝", profile.followeds)
+                        }
+                        .buttonStyle(.plain)
+
                         statText("歌单", profile.playlistCount)
                     }
                     .padding(.top, 2)
+                }
+
+                if canFollow {
+                    Button {
+                        Task { await toggleFollow() }
+                    } label: {
+                        Text(isFollowed ? "已关注" : "关注")
+                            .font(.caption.weight(.semibold))
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 6)
+                            .background(
+                                isFollowed ? Color.secondary.opacity(0.18) : Color.splayerAccent,
+                                in: Capsule()
+                            )
+                            .foregroundStyle(isFollowed ? Color.primary : Color.white)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isFollowBusy)
+                    .padding(.top, 4)
                 }
             }
 
@@ -108,6 +150,11 @@ struct UserProfileView: View {
         }
         .padding(14)
         .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+    }
+
+    private var canFollow: Bool {
+        guard auth.isLoggedIn, let myId = auth.profile?.userId else { return false }
+        return myId != userId
     }
 
     private func statText(_ title: String, _ count: Int?) -> some View {
@@ -136,5 +183,26 @@ struct UserProfileView: View {
             errorText = error.localizedDescription
         }
         playlists = (try? await api.userPlaylists(uid: userId, cookie: auth.cookie)) ?? []
+
+        // 通过我的关注列表判断是否已关注该用户
+        if let myId = auth.profile?.userId, myId != userId,
+           let follows = try? await api.userFollows(uid: myId, cookie: auth.cookie) {
+            isFollowed = follows.contains { $0.userId == userId }
+        }
+    }
+
+    private func toggleFollow() async {
+        guard !isFollowBusy, let cookie = auth.cookie else { return }
+        isFollowBusy = true
+        defer { isFollowBusy = false }
+
+        let target = !isFollowed
+        isFollowed = target
+        do {
+            try await NeteaseAPI().setUserFollowed(id: userId, follow: target, cookie: cookie)
+        } catch {
+            isFollowed = !target
+            actionError = error.localizedDescription
+        }
     }
 }

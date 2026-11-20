@@ -57,6 +57,12 @@ struct LikeResponse: Decodable {
     let msg: String?
 }
 
+/// 私人 FM（/personal_fm）
+struct PersonalFMResponse: Decodable {
+    let code: Int
+    let data: [Song]?
+}
+
 extension NeteaseAPI {
     /// 推荐歌单
     func personalizedPlaylists(limit: Int = 12, cookie: String?) async throws -> [Playlist] {
@@ -140,6 +146,15 @@ extension NeteaseAPI {
             start = end
         }
         return songs
+    }
+
+    /// 私人 FM 推荐歌曲（每次约 3 首，需登录）
+    func personalFM(cookie: String) async throws -> [Song] {
+        let response: PersonalFMResponse = try await get("/personal_fm", cookie: cookie)
+        guard response.code == 200 else {
+            throw APIError.business(code: response.code, message: "获取私人 FM 失败")
+        }
+        return response.data ?? []
     }
 
     /// 收藏 / 取消收藏

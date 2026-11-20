@@ -166,4 +166,19 @@ extension NeteaseAPI {
         }
         return (album, response.songs ?? [])
     }
+
+    /// 收藏 / 取消收藏专辑
+    func setAlbumSubscribed(id: Int, subscribe: Bool, cookie: String) async throws {
+        let response: OperationResponse = try await get(
+            "/album/sub",
+            query: ["id": String(id), "t": subscribe ? "1" : "0"],
+            cookie: cookie
+        )
+        guard response.code == 200 else {
+            throw APIError.business(
+                code: response.code,
+                message: response.message ?? response.msg ?? "专辑收藏操作失败"
+            )
+        }
+    }
 }

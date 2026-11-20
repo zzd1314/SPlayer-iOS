@@ -12,6 +12,9 @@ struct AlbumDetailView: View {
     @State private var isLoading = false
     @State private var loadedOnce = false
     @State private var errorText: String?
+    @State private var isSubscribed = false
+    @State private var isSubBusy = false
+    @State private var actionError: String?
 
     private var info: AlbumSummary {
         detail ?? album
@@ -52,6 +55,20 @@ struct AlbumDetailView: View {
         .navigationTitle(album.name)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            if auth.isLoggedIn {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        Task { await toggleSubscribe() }
+                    } label: {
+                        Label(
+                            isSubscribed ? "取消收藏" : "收藏专辑",
+                            systemImage: isSubscribed ? "checkmark.circle.fill" : "plus.circle"
+                        )
+                    }
+                    .disabled(isSubBusy)
+                    .tint(isSubscribed ? Color.splayerAccent : nil)
+                }
+            }
             if let url = album.shareURL {
                 ToolbarItem(placement: .topBarTrailing) {
                     ShareLink(item: url) {
@@ -91,6 +108,14 @@ struct AlbumDetailView: View {
                     }
                 }
             }
+        }
+        .alert("操作失败", isPresented: Binding(
+            get: { actionError != nil },
+            set: { if !$0 { actionError = nil } }
+        )) {
+            Button("好", role: .cancel) {}
+        } message: {
+            Text(actionError ?? "")
         }
     }
 
@@ -154,8 +179,24 @@ struct AlbumDetailView: View {
             let result = try await NeteaseAPI().albumDetail(id: album.id, cookie: auth.cookie)
             detail = result.album
             songs = result.songs
+            isSubscribed = result.album.isSub ?? false
         } catch {
             errorText = error.localizedDescription
+        }
+    }
+
+    private func toggleSubscribe() async {
+        guard !isSubBusy, let cookie = auth.cookie else { return }
+        isSubBusy = true
+        defer { isSubBusy = false }
+
+        let target = !isSubscribed
+        isSubscribed = target
+        do {
+            try await NeteaseAPI().setAlbumSubscribed(id: album.id, subscribe: target, cookie: cookie)
+        } catch {
+            isSubscribed = !target
+            actionError = error.localizedDescription
         }
     }
 }

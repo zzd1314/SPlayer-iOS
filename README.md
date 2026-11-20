@@ -22,6 +22,7 @@ SPlayer-Next（[SPlayer-Dev/SPlayer-Next](https://github.com/SPlayer-Dev/SPlayer
 - [x] M11 关注歌手 / 收藏歌单 / 歌曲评论 / 播放队列拖拽排序
 - [x] M12 关注歌手列表 / 歌单内搜索 / 评论点赞与发送 / 首页换一批
 - [x] M13 评论分页加载 / 歌单增删歌曲 / 用户主页 / 歌词点击跳转
+- [x] M14 私人 FM / 专辑收藏 / 关注与粉丝列表 / 歌单创建管理
 
 ## 构建
 

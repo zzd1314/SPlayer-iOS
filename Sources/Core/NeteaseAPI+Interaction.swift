@@ -19,6 +19,18 @@ struct UserDetailResponse: Decodable {
     let profile: UserProfile?
 }
 
+/// 关注列表（/user/follows）
+struct UserFollowsResponse: Decodable {
+    let code: Int
+    let follow: [UserSummary]?
+}
+
+/// 粉丝列表（/user/followeds）
+struct UserFollowedsResponse: Decodable {
+    let code: Int
+    let followeds: [UserSummary]?
+}
+
 /// 已关注歌手列表（/artist/sublist），兼容 artists / data 两种返回
 struct ArtistSublistResponse: Decodable {
     let code: Int
@@ -126,6 +138,57 @@ extension NeteaseAPI {
             throw APIError.business(code: response.code, message: "用户不存在")
         }
         return profile
+    }
+
+    /// 关注列表
+    func userFollows(
+        uid: Int,
+        limit: Int = 1000,
+        offset: Int = 0,
+        cookie: String?
+    ) async throws -> [UserSummary] {
+        let response: UserFollowsResponse = try await get(
+            "/user/follows",
+            query: ["uid": String(uid), "limit": String(limit), "offset": String(offset)],
+            cookie: cookie
+        )
+        guard response.code == 200 else {
+            throw APIError.business(code: response.code, message: "获取关注列表失败")
+        }
+        return response.follow ?? []
+    }
+
+    /// 粉丝列表
+    func userFolloweds(
+        uid: Int,
+        limit: Int = 1000,
+        offset: Int = 0,
+        cookie: String?
+    ) async throws -> [UserSummary] {
+        let response: UserFollowedsResponse = try await get(
+            "/user/followeds",
+            query: ["uid": String(uid), "limit": String(limit), "offset": String(offset)],
+            cookie: cookie
+        )
+        guard response.code == 200 else {
+            throw APIError.business(code: response.code, message: "获取粉丝列表失败")
+        }
+        return response.followeds ?? []
+    }
+
+    /// 关注 / 取消关注用户
+    func setUserFollowed(id: Int, follow: Bool, cookie: String) async throws {
+        let response: OperationResponse = try await get(
+            "/follow",
+            query: ["id": String(id), "t": follow ? "1" : "0"],
+            cookie: cookie
+        )
+        guard response.code == 200 else {
+            throw APIError.business(
+                code: response.code,
+                message: response.message ?? response.msg ?? "关注操作失败"
+            )
+        }
     }
 
     /// 收藏 / 取消收藏歌单
