@@ -10,13 +10,12 @@ struct RecentPlaysView: View {
         List {
             Section {
                 ForEach(Array(player.recentSongs.enumerated()), id: \.element.id) { index, song in
-                    Button {
-                        Task { await player.play(song: song, in: player.recentSongs) }
-                    } label: {
-                        SongRow(index: index + 1, song: song)
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(player.currentSong?.id == song.id ? Color.splayerAccent : Color.primary)
+                    SongRow(index: index + 1, song: song, showsLikeButton: true)
+                        .foregroundStyle(player.currentSong?.id == song.id ? Color.splayerAccent : Color.primary)
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            Task { await player.play(song: song, in: player.recentSongs) }
+                        }
                 }
 
                 if player.recentSongs.isEmpty {

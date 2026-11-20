@@ -141,6 +141,33 @@ extension AlbumSummary {
     }
 }
 
+// MARK: - 分享链接
+
+extension Song {
+    /// 网易云网页歌曲链接
+    var shareURL: URL? {
+        URL(string: "https://music.163.com/#/song?id=\(id)")
+    }
+}
+
+extension Playlist {
+    var shareURL: URL? {
+        URL(string: "https://music.163.com/#/playlist?id=\(id)")
+    }
+}
+
+extension ArtistSummary {
+    var shareURL: URL? {
+        URL(string: "https://music.163.com/#/artist?id=\(id)")
+    }
+}
+
+extension AlbumSummary {
+    var shareURL: URL? {
+        URL(string: "https://music.163.com/#/album?id=\(id)")
+    }
+}
+
 // MARK: - 播放进度快照
 
 /// 用于「记忆播放进度」：应用退出后恢复队列与进度

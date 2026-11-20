@@ -1,9 +1,16 @@
 import SwiftUI
 
-/// 歌曲行：封面 + 序号（可选）+ 歌名 + 歌手 · 专辑
+/// 歌曲行：封面 + 序号（可选）+ 歌名 + 歌手 · 专辑（可选收藏按钮）
 struct SongRow: View {
     let index: Int?
     let song: Song
+    /// 是否显示行内收藏按钮
+    var showsLikeButton = false
+
+    @EnvironmentObject private var auth: AuthStore
+    @EnvironmentObject private var player: PlayerStore
+
+    @State private var isLikeBusy = false
 
     var body: some View {
         HStack(spacing: 10) {
@@ -27,6 +34,21 @@ struct SongRow: View {
             }
 
             Spacer(minLength: 0)
+
+            if showsLikeButton {
+                Button {
+                    Task { await toggleLike() }
+                } label: {
+                    Image(systemName: isLiked ? "heart.fill" : "heart")
+                        .font(.footnote)
+                        .foregroundStyle(isLiked ? Color.splayerAccent : Color.secondary)
+                        .frame(width: 32, height: 32)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.borderless)
+                .disabled(isLikeBusy || !auth.isLoggedIn)
+                .accessibilityLabel(isLiked ? "取消收藏" : "收藏")
+            }
         }
         .contentShape(Rectangle())
     }
@@ -40,5 +62,17 @@ struct SongRow: View {
             parts.append(album)
         }
         return parts.joined(separator: " · ")
+    }
+
+    private var isLiked: Bool {
+        player.likedSongIds.contains(song.id)
+    }
+
+    private func toggleLike() async {
+        guard !isLikeBusy else { return }
+        isLikeBusy = true
+        defer { isLikeBusy = false }
+        // 失败时 PlayerStore 会自动回滚收藏状态
+        try? await player.toggleLike(songId: song.id)
     }
 }

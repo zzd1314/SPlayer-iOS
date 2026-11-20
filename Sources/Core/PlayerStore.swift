@@ -257,30 +257,39 @@ final class PlayerStore: ObservableObject {
         }
     }
 
-    /// 收藏 / 取消收藏当前歌曲（失败时恢复本地状态）
-    func toggleLikeCurrent() async throws {
-        guard let song = currentSong else { return }
+    /// 指定歌曲是否已收藏
+    func isLiked(_ songId: Int) -> Bool {
+        likedSongIds.contains(songId)
+    }
+
+    /// 收藏 / 取消收藏指定歌曲（失败时恢复本地状态）
+    func toggleLike(songId: Int) async throws {
         guard let cookie, !cookie.isEmpty else {
             throw APIError.business(code: -1, message: "请先登录")
         }
 
-        let wasLiked = likedSongIds.contains(song.id)
-        let target = !wasLiked
-        if target {
-            likedSongIds.insert(song.id)
-        } else {
-            likedSongIds.remove(song.id)
-        }
+        let wasLiked = likedSongIds.contains(songId)
+        applyLikeState(songId: songId, liked: !wasLiked)
 
         do {
-            try await NeteaseAPI().setLike(songId: song.id, like: target, cookie: cookie)
+            try await NeteaseAPI().setLike(songId: songId, like: !wasLiked, cookie: cookie)
         } catch {
-            if wasLiked {
-                likedSongIds.insert(song.id)
-            } else {
-                likedSongIds.remove(song.id)
-            }
+            applyLikeState(songId: songId, liked: wasLiked)
             throw error
+        }
+    }
+
+    /// 收藏 / 取消收藏当前歌曲
+    func toggleLikeCurrent() async throws {
+        guard let song = currentSong else { return }
+        try await toggleLike(songId: song.id)
+    }
+
+    private func applyLikeState(songId: Int, liked: Bool) {
+        if liked {
+            likedSongIds.insert(songId)
+        } else {
+            likedSongIds.remove(songId)
         }
     }
 

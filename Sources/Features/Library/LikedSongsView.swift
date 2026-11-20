@@ -14,13 +14,12 @@ struct LikedSongsView: View {
         List {
             Section {
                 ForEach(Array(songs.enumerated()), id: \.element.id) { index, song in
-                    Button {
-                        play(song)
-                    } label: {
-                        SongRow(index: index + 1, song: song)
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(player.currentSong?.id == song.id ? Color.splayerAccent : Color.primary)
+                    SongRow(index: index + 1, song: song, showsLikeButton: true)
+                        .foregroundStyle(player.currentSong?.id == song.id ? Color.splayerAccent : Color.primary)
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            play(song)
+                        }
                 }
 
                 if songs.isEmpty, loadedOnce, errorText == nil, !isLoading {

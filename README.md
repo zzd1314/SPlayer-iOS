@@ -18,6 +18,7 @@ SPlayer-Next（[SPlayer-Dev/SPlayer-Next](https://github.com/SPlayer-Dev/SPlayer
 - [x] M7 手机号/邮箱验证码登录 + 播放模式 + 桌面歌词小组件 / iPad 适配
 - [x] M8 首页发现（每日推荐 / 推荐歌单 / 排行榜）+ 我喜欢的音乐 + 最近播放
 - [x] M9 搜索分类（单曲 / 歌手 / 专辑 / 歌单）+ 歌手 / 专辑详情页
+- [x] M10 歌曲列表快捷收藏 + 歌曲 / 歌单 / 歌手 / 专辑分享
 
 ## 构建
 

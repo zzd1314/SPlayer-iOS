@@ -28,13 +28,12 @@ struct ArtistDetailView: View {
             if !hotSongs.isEmpty {
                 Section {
                     ForEach(Array(hotSongs.enumerated()), id: \.offset) { index, song in
-                        Button {
-                            play(song)
-                        } label: {
-                            SongRow(index: index + 1, song: song)
-                        }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(player.currentSong?.id == song.id ? Color.splayerAccent : Color.primary)
+                        SongRow(index: index + 1, song: song, showsLikeButton: true)
+                            .foregroundStyle(player.currentSong?.id == song.id ? Color.splayerAccent : Color.primary)
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                play(song)
+                            }
                     }
                 } header: {
                     Text("热门歌曲")
@@ -77,6 +76,13 @@ struct ArtistDetailView: View {
         .navigationTitle(artist.name)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            if let url = artist.shareURL {
+                ToolbarItem(placement: .topBarTrailing) {
+                    ShareLink(item: url) {
+                        Label("分享", systemImage: "square.and.arrow.up")
+                    }
+                }
+            }
             if !hotSongs.isEmpty {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {

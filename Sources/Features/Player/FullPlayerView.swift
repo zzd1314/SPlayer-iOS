@@ -328,6 +328,12 @@ struct FullPlayerView: View {
 
             Spacer()
 
+            if let url = player.currentSong?.shareURL {
+                ShareLink(item: url) {
+                    Image(systemName: "square.and.arrow.up")
+                }
+            }
+
             Button {
                 Task { await toggleLike() }
             } label: {

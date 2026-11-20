@@ -113,13 +113,12 @@ struct SearchView: View {
             List {
                 Section {
                     ForEach(songs) { song in
-                        Button {
-                            play(song)
-                        } label: {
-                            SongRow(index: nil, song: song)
-                        }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(player.currentSong?.id == song.id ? Color.splayerAccent : Color.primary)
+                        SongRow(index: nil, song: song, showsLikeButton: true)
+                            .foregroundStyle(player.currentSong?.id == song.id ? Color.splayerAccent : Color.primary)
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                play(song)
+                            }
                     }
                 } header: {
                     Text("找到 \(songs.count) 首歌曲")
