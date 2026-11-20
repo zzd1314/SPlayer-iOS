@@ -35,6 +35,7 @@ SPlayer-Next（[SPlayer-Dev/SPlayer-Next](https://github.com/SPlayer-Dev/SPlayer
 - [x] M24 歌手详情增强：歌手介绍、MV 列表
 - [x] M25 下载管理：显式下载 / 删除 / 空间统计，播放优先使用下载文件
 - [x] M26 云盘上传：本地音频上传到网易云云盘（multipart/form-data）
+- [x] M27 私信：最近联系人、会话历史、发送消息
 
 ## 构建
 

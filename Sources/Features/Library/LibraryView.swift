@@ -215,6 +215,15 @@ struct LibraryView: View {
             }
 
             quickLink(
+                title: "消息",
+                subtitle: "私信与最近联系人",
+                systemImage: "bubble.left.and.bubble.right.fill",
+                color: .cyan
+            ) {
+                MessageCenterView()
+            }
+
+            quickLink(
                 title: "我的云盘",
                 subtitle: "云端歌曲",
                 systemImage: "cloud.fill",
