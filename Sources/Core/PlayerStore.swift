@@ -439,6 +439,8 @@ final class PlayerStore: ObservableObject {
             let item: AVPlayerItem
             if let localURL = LocalMusicStore.url(for: song.id) {
                 item = AVPlayerItem(url: localURL)
+            } else if let streamURL = MediaServerRegistry.streamURL(for: song.id) {
+                item = AVPlayerItem(url: streamURL)
             } else {
                 let remoteURL = try await NeteaseAPI().songURL(
                     id: song.id,
@@ -483,10 +485,10 @@ final class PlayerStore: ObservableObject {
 
     private func loadLyrics(for song: Song) {
         lyricTask?.cancel()
-        guard !LocalMusicStore.isLocal(song.id) else {
+        guard song.id > 0 else {
             lyricLines = []
             isLoadingLyrics = false
-            lyricError = "本地歌曲暂无歌词"
+            lyricError = "该歌曲暂无歌词"
             return
         }
         isLoadingLyrics = true
@@ -514,7 +516,7 @@ final class PlayerStore: ObservableObject {
         let nextIndex = currentIndex + 1
         guard queue.indices.contains(nextIndex) else { return }
         let song = queue[nextIndex]
-        guard !LocalMusicStore.isLocal(song.id),
+        guard song.id > 0,
               AudioCache.cachedURL(songId: song.id) == nil,
               !preloadingSongs.contains(song.id)
         else { return }

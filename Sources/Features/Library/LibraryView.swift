@@ -222,6 +222,15 @@ struct LibraryView: View {
             ) {
                 LocalMusicView()
             }
+
+            quickLink(
+                title: "媒体服务器",
+                subtitle: "Subsonic / Jellyfin",
+                systemImage: "externaldrive.connected.to.line.below",
+                color: .indigo
+            ) {
+                MediaServerListView()
+            }
         }
     }
 

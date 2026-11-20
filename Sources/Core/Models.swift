@@ -200,7 +200,8 @@ struct PlayRecord: Decodable, Identifiable {
 extension Song {
     /// 网易云网页歌曲链接
     var shareURL: URL? {
-        URL(string: "https://music.163.com/#/song?id=\(id)")
+        guard id > 0 else { return nil }
+        return URL(string: "https://music.163.com/#/song?id=\(id)")
     }
 }
 

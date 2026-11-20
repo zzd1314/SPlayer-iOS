@@ -63,6 +63,17 @@ struct SettingsView: View {
                     }
 
                     NavigationLink {
+                        MediaServerListView()
+                    } label: {
+                        SettingsGroupRow(
+                            icon: "externaldrive.connected.to.line.below",
+                            color: .indigo,
+                            title: "媒体服务器",
+                            subtitle: "Subsonic / Navidrome / Jellyfin / Emby"
+                        )
+                    }
+
+                    NavigationLink {
                         CacheSettingsView()
                     } label: {
                         SettingsGroupRow(
