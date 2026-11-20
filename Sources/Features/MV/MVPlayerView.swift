@@ -11,6 +11,7 @@ struct MVPlayerView: View {
     @State private var avPlayer: AVPlayer?
     @State private var isLoading = false
     @State private var errorText: String?
+    @State private var showComments = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -57,6 +58,18 @@ struct MVPlayerView: View {
         }
         .navigationTitle(mv.name)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    showComments = true
+                } label: {
+                    Label("评论", systemImage: "bubble.left")
+                }
+            }
+        }
+        .sheet(isPresented: $showComments) {
+            CommentsView(resource: .mv(mv.id), title: mv.name)
+        }
         .task {
             if avPlayer == nil {
                 await load()

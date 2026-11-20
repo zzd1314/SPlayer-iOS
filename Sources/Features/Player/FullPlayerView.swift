@@ -40,7 +40,7 @@ struct FullPlayerView: View {
         }
         .sheet(isPresented: $showComments) {
             if let song = player.currentSong {
-                CommentsView(songId: song.id, songName: song.name)
+                CommentsView(resource: .song(song.id), title: song.name)
             }
         }
         .sheet(isPresented: $showOptions) {

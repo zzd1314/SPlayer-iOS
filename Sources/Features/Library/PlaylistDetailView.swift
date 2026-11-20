@@ -17,6 +17,7 @@ struct PlaylistDetailView: View {
     @State private var filterText = ""
     @State private var ownerId: Int?
     @State private var ownerName: String?
+    @State private var showComments = false
 
     var body: some View {
         List {
@@ -88,6 +89,13 @@ struct PlaylistDetailView: View {
                     }
                 }
             }
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    showComments = true
+                } label: {
+                    Label("评论", systemImage: "bubble.left")
+                }
+            }
             if !visibleSongs.isEmpty {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
@@ -97,6 +105,9 @@ struct PlaylistDetailView: View {
                     }
                 }
             }
+        }
+        .sheet(isPresented: $showComments) {
+            CommentsView(resource: .playlist(playlist.id), title: playlist.name)
         }
         .task {
             if songs.isEmpty {

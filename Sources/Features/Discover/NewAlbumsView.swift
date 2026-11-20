@@ -72,7 +72,7 @@ struct NewAlbumsView: View {
     }
 }
 
-private struct AlbumGridCard: View {
+struct AlbumGridCard: View {
     let album: AlbumSummary
 
     var body: some View {

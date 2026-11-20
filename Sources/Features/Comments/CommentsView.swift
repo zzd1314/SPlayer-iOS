@@ -1,9 +1,9 @@
 import SwiftUI
 
-/// 歌曲评论：热门 + 最新，支持点赞与发表评论
+/// 评论：热门 + 最新，支持点赞与发表评论（歌曲 / 专辑 / 歌单 / MV）
 struct CommentsView: View {
-    let songId: Int
-    let songName: String
+    let resource: CommentResource
+    let title: String
 
     @EnvironmentObject private var auth: AuthStore
     @Environment(\.dismiss) private var dismiss
@@ -66,7 +66,7 @@ struct CommentsView: View {
                 }
             }
             .safeAreaInset(edge: .bottom) {
-                if auth.isLoggedIn {
+                if auth.isLoggedIn, isSupported {
                     composer
                 }
             }
@@ -80,16 +80,21 @@ struct CommentsView: View {
                     ProgressView()
                 } else if let errorText, hotComments.isEmpty, comments.isEmpty, !isLoading {
                     ContentUnavailableView {
-                        Label("加载失败", systemImage: "wifi.exclamationmark")
+                        Label(
+                            isSupported ? "加载失败" : "暂不支持评论",
+                            systemImage: isSupported ? "wifi.exclamationmark" : "bubble.left"
+                        )
                     } description: {
                         Text(errorText)
                     } actions: {
-                        Button("重试") {
-                            Task { await load() }
+                        if isSupported {
+                            Button("重试") {
+                                Task { await load() }
+                            }
                         }
                     }
                 } else if loadedOnce, hotComments.isEmpty, comments.isEmpty, !isLoading {
-                    ContentUnavailableView("暂无评论", systemImage: "bubble.left", description: Text(songName))
+                    ContentUnavailableView("暂无评论", systemImage: "bubble.left", description: Text(title))
                 }
             }
             .alert("操作失败", isPresented: Binding(
@@ -105,6 +110,11 @@ struct CommentsView: View {
 
     private var navigationTitle: String {
         total > 0 ? "评论 \(total)" : "评论"
+    }
+
+    /// 负数 id 为本地 / 媒体服务器资源，网易云接口不支持
+    private var isSupported: Bool {
+        resource.id > 0
     }
 
     private var canSend: Bool {
@@ -160,6 +170,11 @@ struct CommentsView: View {
 
     private func load() async {
         guard !isLoading else { return }
+        guard isSupported else {
+            errorText = "本地歌曲与媒体服务器歌曲暂不支持评论"
+            loadedOnce = true
+            return
+        }
         isLoading = true
         errorText = nil
         defer {
@@ -168,7 +183,7 @@ struct CommentsView: View {
         }
 
         do {
-            let result = try await NeteaseAPI().songComments(id: songId, cookie: auth.cookie)
+            let result = try await NeteaseAPI().comments(resource: resource, cookie: auth.cookie)
             hotComments = result.hot
             comments = result.latest
             total = result.total
@@ -184,8 +199,8 @@ struct CommentsView: View {
         defer { isLoadingMore = false }
 
         do {
-            let result = try await NeteaseAPI().songComments(
-                id: songId,
+            let result = try await NeteaseAPI().comments(
+                resource: resource,
                 limit: 50,
                 offset: comments.count,
                 cookie: auth.cookie
@@ -210,7 +225,7 @@ struct CommentsView: View {
         defer { isSending = false }
 
         do {
-            try await NeteaseAPI().sendComment(songId: songId, content: content, cookie: cookie)
+            try await NeteaseAPI().sendComment(resource: resource, content: content, cookie: cookie)
             draft = ""
             await load()
         } catch {
@@ -225,7 +240,7 @@ struct CommentsView: View {
 
         do {
             try await NeteaseAPI().setCommentLiked(
-                songId: songId,
+                resource: resource,
                 commentId: comment.id,
                 like: target,
                 cookie: cookie

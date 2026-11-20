@@ -206,6 +206,15 @@ struct LibraryView: View {
             }
 
             quickLink(
+                title: "收藏专辑",
+                subtitle: "已收藏专辑",
+                systemImage: "square.stack.fill",
+                color: .pink
+            ) {
+                SubscribedAlbumsView()
+            }
+
+            quickLink(
                 title: "我的云盘",
                 subtitle: "云端歌曲",
                 systemImage: "cloud.fill",

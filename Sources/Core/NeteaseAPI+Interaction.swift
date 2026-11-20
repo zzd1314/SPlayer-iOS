@@ -45,6 +45,47 @@ struct ArtistSublistResponse: Decodable {
     let data: [ArtistSummary]?
 }
 
+/// 已收藏专辑列表（/album/sublist）
+struct AlbumSublistResponse: Decodable {
+    let code: Int
+    let data: [AlbumSummary]?
+}
+
+/// 评论资源类型：对应不同评论接口与 type 参数
+enum CommentResource: Equatable {
+    case song(Int)
+    case album(Int)
+    case playlist(Int)
+    case mv(Int)
+
+    var id: Int {
+        switch self {
+        case .song(let id), .album(let id), .playlist(let id), .mv(let id):
+            return id
+        }
+    }
+
+    /// 评论列表接口路径
+    var path: String {
+        switch self {
+        case .song: return "/comment/music"
+        case .album: return "/comment/album"
+        case .playlist: return "/comment/playlist"
+        case .mv: return "/comment/mv"
+        }
+    }
+
+    /// 点赞 / 发表评论的 type 参数
+    var type: String {
+        switch self {
+        case .song: return "0"
+        case .mv: return "1"
+        case .playlist: return "2"
+        case .album: return "3"
+        }
+    }
+}
+
 /// 通用操作结果
 struct OperationResponse: Decodable {
     let code: Int
@@ -259,16 +300,29 @@ extension NeteaseAPI {
         }
     }
 
-    /// 歌曲评论：热门 + 最新
-    func songComments(
-        id: Int,
+    /// 已收藏专辑列表
+    func subscribedAlbums(limit: Int = 1000, offset: Int = 0, cookie: String) async throws -> [AlbumSummary] {
+        let response: AlbumSublistResponse = try await get(
+            "/album/sublist",
+            query: ["limit": String(limit), "offset": String(offset)],
+            cookie: cookie
+        )
+        guard response.code == 200 else {
+            throw APIError.business(code: response.code, message: "获取收藏专辑失败")
+        }
+        return response.data ?? []
+    }
+
+    /// 通用评论：热门 + 最新（歌曲 / 专辑 / 歌单 / MV）
+    func comments(
+        resource: CommentResource,
         limit: Int = 50,
         offset: Int = 0,
         cookie: String? = nil
     ) async throws -> (hot: [CommentItem], latest: [CommentItem], total: Int) {
         let response: CommentsResponse = try await get(
-            "/comment/music",
-            query: ["id": String(id), "limit": String(limit), "offset": String(offset)],
+            resource.path,
+            query: ["id": String(resource.id), "limit": String(limit), "offset": String(offset)],
             cookie: cookie
         )
         guard response.code == 200 else {
@@ -278,14 +332,19 @@ extension NeteaseAPI {
     }
 
     /// 评论点赞 / 取消点赞
-    func setCommentLiked(songId: Int, commentId: Int, like: Bool, cookie: String) async throws {
+    func setCommentLiked(
+        resource: CommentResource,
+        commentId: Int,
+        like: Bool,
+        cookie: String
+    ) async throws {
         let response: OperationResponse = try await get(
             "/comment/like",
             query: [
-                "id": String(songId),
+                "id": String(resource.id),
                 "cid": String(commentId),
                 "t": like ? "1" : "0",
-                "type": "0"
+                "type": resource.type
             ],
             cookie: cookie
         )
@@ -297,14 +356,14 @@ extension NeteaseAPI {
         }
     }
 
-    /// 发表歌曲评论
-    func sendComment(songId: Int, content: String, cookie: String) async throws {
+    /// 发表评论（歌曲 / 专辑 / 歌单 / MV）
+    func sendComment(resource: CommentResource, content: String, cookie: String) async throws {
         let response: OperationResponse = try await get(
             "/comment",
             query: [
                 "t": "1",
-                "type": "0",
-                "id": String(songId),
+                "type": resource.type,
+                "id": String(resource.id),
                 "content": content
             ],
             cookie: cookie

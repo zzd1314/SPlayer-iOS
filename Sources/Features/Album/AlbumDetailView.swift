@@ -15,6 +15,7 @@ struct AlbumDetailView: View {
     @State private var isSubscribed = false
     @State private var isSubBusy = false
     @State private var actionError: String?
+    @State private var showComments = false
 
     private var info: AlbumSummary {
         detail ?? album
@@ -76,6 +77,13 @@ struct AlbumDetailView: View {
                     }
                 }
             }
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    showComments = true
+                } label: {
+                    Label("评论", systemImage: "bubble.left")
+                }
+            }
             if !songs.isEmpty {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
@@ -85,6 +93,9 @@ struct AlbumDetailView: View {
                     }
                 }
             }
+        }
+        .sheet(isPresented: $showComments) {
+            CommentsView(resource: .album(album.id), title: album.name)
         }
         .task {
             if !loadedOnce {
