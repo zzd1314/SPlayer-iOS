@@ -228,6 +228,8 @@ private struct PlayerSettingsView: View {
 
 private struct LyricSettingsView: View {
     @AppStorage("showTranslation") private var showTranslation = true
+    @AppStorage("showRomanization") private var showRomanization = false
+    @AppStorage("lyricOffset") private var lyricOffset = 0.0
     @AppStorage("lyricFontSize") private var lyricFontSize = 22.0
     @AppStorage("lyricAlignment") private var lyricAlignment = "auto"
     @AppStorage("inactiveAlpha") private var inactiveAlpha = 0.45
@@ -238,11 +240,12 @@ private struct LyricSettingsView: View {
         Form {
             Section {
                 Toggle("显示翻译", isOn: $showTranslation)
+                Toggle("显示罗马音", isOn: $showRomanization)
                 Toggle("跟随封面颜色", isOn: $followCoverColor)
             } header: {
                 Text("内容")
             } footer: {
-                Text("跟随封面颜色会提取当前封面主色，用于歌词高亮与主题色。")
+                Text("跟随封面颜色会提取当前封面主色，用于歌词高亮与主题色；逐字歌词会按演唱进度逐字高亮。")
             }
 
             Section("样式") {
@@ -270,6 +273,21 @@ private struct LyricSettingsView: View {
                         .foregroundStyle(.secondary)
                         .frame(width: 38, alignment: .trailing)
                 }
+            }
+
+            Section {
+                HStack {
+                    Text("歌词偏移")
+                    Slider(value: $lyricOffset, in: -3...3, step: 0.1)
+                    Text(String(format: "%+.1f 秒", lyricOffset))
+                        .font(.footnote.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                        .frame(width: 56, alignment: .trailing)
+                }
+            } header: {
+                Text("时间轴")
+            } footer: {
+                Text("正值让歌词提前显示，负值延后显示，用于校正歌词与音频的时间差。")
             }
 
             Section {

@@ -115,8 +115,9 @@ final class PlayerStore: ObservableObject {
 
     var currentLyricIndex: Int? {
         guard !lyricLines.isEmpty else { return nil }
+        let offset = AppSettings.lyricOffset
         var index: Int?
-        for (i, line) in lyricLines.enumerated() where line.time <= currentTime + 0.2 {
+        for (i, line) in lyricLines.enumerated() where line.time <= currentTime + 0.2 + offset {
             index = i
         }
         return index

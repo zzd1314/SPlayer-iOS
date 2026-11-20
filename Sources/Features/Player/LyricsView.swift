@@ -5,6 +5,7 @@ struct LyricsView: View {
     @EnvironmentObject private var player: PlayerStore
 
     @AppStorage("showTranslation") private var showTranslation = true
+    @AppStorage("showRomanization") private var showRomanization = false
     @AppStorage("lyricFontSize") private var lyricFontSize = 22.0
     @AppStorage("lyricAlignment") private var lyricAlignment = "auto"
     @AppStorage("inactiveAlpha") private var inactiveAlpha = 0.45
@@ -92,18 +93,34 @@ struct LyricsView: View {
         let baseAlpha = isPassed ? max(inactiveAlpha - 0.18, 0.12) : inactiveAlpha
 
         return VStack(alignment: horizontalAlignment, spacing: 4) {
-            Text(line.text)
-                .font(
-                    .system(
-                        size: isCurrent ? lyricFontSize * 1.1 : lyricFontSize,
-                        weight: isCurrent ? .semibold : .regular
+            if isCurrent, let words = line.words, !words.isEmpty {
+                karaokeText(words)
+                    .multilineTextAlignment(textAlignment)
+                    .lineSpacing(3)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .shadow(color: .black.opacity(0.18), radius: 6, y: 2)
+            } else {
+                Text(line.text)
+                    .font(
+                        .system(
+                            size: isCurrent ? lyricFontSize * 1.1 : lyricFontSize,
+                            weight: isCurrent ? .semibold : .regular
+                        )
                     )
-                )
-                .foregroundStyle(isCurrent ? accent : Color.white.opacity(baseAlpha))
-                .multilineTextAlignment(textAlignment)
-                .lineSpacing(3)
-                .fixedSize(horizontal: false, vertical: true)
-                .shadow(color: .black.opacity(isCurrent ? 0.18 : 0), radius: 6, y: 2)
+                    .foregroundStyle(isCurrent ? accent : Color.white.opacity(baseAlpha))
+                    .multilineTextAlignment(textAlignment)
+                    .lineSpacing(3)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .shadow(color: .black.opacity(isCurrent ? 0.18 : 0), radius: 6, y: 2)
+            }
+
+            if showRomanization, let romanization = line.romanization, !romanization.isEmpty {
+                Text(romanization)
+                    .font(.system(size: lyricFontSize * 0.58, weight: .regular))
+                    .foregroundStyle(.white.opacity(isCurrent ? 0.6 : baseAlpha * 0.7))
+                    .multilineTextAlignment(textAlignment)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
 
             if showTranslation, let translation = line.translation, !translation.isEmpty {
                 Text(translation)
@@ -114,5 +131,16 @@ struct LyricsView: View {
             }
         }
         .animation(.easeInOut(duration: 0.2), value: isCurrent)
+    }
+
+    /// 逐字歌词：已唱部分使用主题色，未唱部分半透明
+    private func karaokeText(_ words: [LyricWord]) -> Text {
+        let now = player.currentTime + AppSettings.lyricOffset
+        let text = words.reduce(Text("")) { partial, word in
+            let sung = now >= word.time
+            return partial + Text(word.text)
+                .foregroundColor(sung ? accent : Color.white.opacity(0.5))
+        }
+        return text.font(.system(size: lyricFontSize * 1.1, weight: .semibold))
     }
 }

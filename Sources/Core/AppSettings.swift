@@ -162,6 +162,18 @@ enum AppSettings {
         set { store.set(newValue, forKey: "showTranslation") }
     }
 
+    /// 显示罗马音 / 音译
+    static var showRomanization: Bool {
+        get { boolValue("showRomanization", false) }
+        set { store.set(newValue, forKey: "showRomanization") }
+    }
+
+    /// 歌词偏移（秒）：正值让歌词提前显示
+    static var lyricOffset: Double {
+        get { doubleValue("lyricOffset", 0) }
+        set { store.set(newValue, forKey: "lyricOffset") }
+    }
+
     static var lyricFontSize: Double {
         get { doubleValue("lyricFontSize", 22) }
         set { store.set(newValue, forKey: "lyricFontSize") }
@@ -252,7 +264,7 @@ enum AppSettings {
     private static let allKeys = [
         "apiBaseURL", "audioLevel", "autoPlay", "rememberLastTrack", "showLyricInBar",
         "searchPlayBehavior", "songListPlayBehavior", "preloadNextTrack", "playbackRate", "keepScreenAwake",
-        "timeFormat", "showTranslation", "lyricFontSize", "lyricAlignment", "inactiveAlpha",
+        "timeFormat", "showTranslation", "showRomanization", "lyricOffset", "lyricFontSize", "lyricAlignment", "inactiveAlpha",
         "followCoverColor", "liveActivityEnabled", "themeMode", "themeSource", "customThemeColor",
         "appearanceStyle", "backgroundBlur", "backgroundDim", "backgroundRevision",
         "enableSongCache", "cacheLimitMB", "repeatMode", "shuffleEnabled", "playbackSnapshot"
