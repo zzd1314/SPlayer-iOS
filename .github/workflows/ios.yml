@@ -8,6 +8,8 @@ on:
 jobs:
   build:
     runs-on: macos-15
+    permissions:
+      contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -58,6 +60,27 @@ jobs:
           cp -R "build/DerivedData/Build/Products/Release-iphoneos/SPlayer-iOS.app" Payload/
           zip -qry SPlayer-iOS-unsigned.ipa Payload
 
+      - name: Verify IPA structure
+        run: |
+          set -euo pipefail
+          APP_PATH=$(unzip -Z1 SPlayer-iOS-unsigned.ipa | grep -E '^Payload/[^/]+\.app/$' | head -1)
+          if [ -z "$APP_PATH" ]; then
+            echo "未在 Payload 下找到 .app 目录" >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          if ! unzip -Z1 SPlayer-iOS-unsigned.ipa | grep -qx "${APP_PATH}Info.plist"; then
+            echo "缺少 ${APP_PATH}Info.plist" >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          {
+            echo "## 安装包结构校验"
+            echo '```'
+            unzip -l SPlayer-iOS-unsigned.ipa | head -25
+            echo '```'
+            echo "- App bundle: \`${APP_PATH}\`"
+            echo "- Info.plist: OK"
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
@@ -72,3 +95,19 @@ jobs:
           name: build-log
           path: build.log
           retention-days: 7
+
+      - name: Publish GitHub Release
+        if: success()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          VERSION=$(sed -n 's/.*MARKETING_VERSION: *"\([0-9][0-9.]*\)".*/\1/p' project.yml | head -1)
+          TAG="v${VERSION}"
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" \
+              --title "SPlayer-Next iOS ${TAG}" \
+              --notes "自动构建，提交 ${GITHUB_SHA}" \
+              --latest
+          fi
+          gh release upload "$TAG" SPlayer-iOS-unsigned.ipa --clobber
