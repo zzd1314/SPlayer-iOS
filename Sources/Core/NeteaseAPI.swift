@@ -107,6 +107,19 @@ struct AccountResponse: Decodable {
     let profile: AccountProfile?
 }
 
+struct CaptchaResponse: Decodable {
+    let code: Int
+    let message: String?
+    let msg: String?
+}
+
+struct LoginResponse: Decodable {
+    let code: Int
+    let cookie: String?
+    let message: String?
+    let msg: String?
+}
+
 extension NeteaseAPI {
     /// 获取二维码 key
     func qrKey() async throws -> String {
@@ -138,6 +151,64 @@ extension NeteaseAPI {
     func account(cookie: String) async throws -> AccountProfile? {
         let response: AccountResponse = try await get("/user/account", cookie: cookie)
         return response.profile
+    }
+
+    /// 发送验证码：手机号或邮箱二选一
+    func sendCaptcha(phone: String? = nil, email: String? = nil, countryCode: String = "86") async throws {
+        var query: [String: String] = [:]
+        if let phone, !phone.isEmpty {
+            query["phone"] = phone
+            query["ctcode"] = countryCode
+        } else if let email, !email.isEmpty {
+            query["email"] = email
+        } else {
+            throw APIError.business(code: -1, message: "请输入手机号或邮箱")
+        }
+
+        let response: CaptchaResponse = try await get("/captcha/sent", query: query)
+        guard response.code == 200 else {
+            throw APIError.business(
+                code: response.code,
+                message: response.message ?? response.msg ?? "验证码发送失败"
+            )
+        }
+    }
+
+    /// 手机号 + 验证码登录
+    func loginCellphone(phone: String, captcha: String, countryCode: String) async throws -> String {
+        let response: LoginResponse = try await get("/login/cellphone", query: [
+            "phone": phone,
+            "captcha": captcha,
+            "countrycode": countryCode
+        ])
+        guard response.code == 200 else {
+            throw APIError.business(
+                code: response.code,
+                message: response.message ?? response.msg ?? "登录失败（\(response.code)）"
+            )
+        }
+        guard let cookie = response.cookie, !cookie.isEmpty else {
+            throw APIError.business(code: -1, message: "登录返回的 Cookie 为空，请重试")
+        }
+        return cookie
+    }
+
+    /// 邮箱 + 验证码登录
+    func loginEmail(email: String, captcha: String) async throws -> String {
+        let response: LoginResponse = try await get("/login", query: [
+            "email": email,
+            "captcha": captcha
+        ])
+        guard response.code == 200 else {
+            throw APIError.business(
+                code: response.code,
+                message: response.message ?? response.msg ?? "登录失败（\(response.code)）"
+            )
+        }
+        guard let cookie = response.cookie, !cookie.isEmpty else {
+            throw APIError.business(code: -1, message: "登录返回的 Cookie 为空，请重试")
+        }
+        return cookie
     }
 }
 

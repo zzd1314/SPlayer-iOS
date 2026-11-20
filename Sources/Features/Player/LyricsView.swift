@@ -1,89 +1,118 @@
 import SwiftUI
 
-/// 歌词视图：按播放进度高亮并自动滚动
+/// 逐行歌词（AMLL 风格）：当前行高亮 + 翻译 + 跟随封面颜色
 struct LyricsView: View {
-    let song: Song
-
     @EnvironmentObject private var player: PlayerStore
 
-    @State private var lines: [LyricLine] = []
-    @State private var isLoading = false
-    @State private var errorText: String?
+    @AppStorage("showTranslation") private var showTranslation = true
+    @AppStorage("lyricFontSize") private var lyricFontSize = 22.0
+    @AppStorage("lyricAlignment") private var lyricAlignment = "auto"
+    @AppStorage("inactiveAlpha") private var inactiveAlpha = 0.45
+    @AppStorage("followCoverColor") private var followCoverColor = true
 
-    private var currentIndex: Int? {
-        guard !lines.isEmpty else { return nil }
-        let time = player.currentTime
-        var index: Int?
-        for (i, line) in lines.enumerated() where line.time <= time + 0.2 {
-            index = i
+    private var accent: Color {
+        followCoverColor ? (player.coverAccent ?? .splayerAccent) : .splayerAccent
+    }
+
+    private var textAlignment: TextAlignment {
+        switch lyricAlignment {
+        case "left": return .leading
+        case "right": return .trailing
+        default: return .center
         }
-        return index
+    }
+
+    private var horizontalAlignment: HorizontalAlignment {
+        switch lyricAlignment {
+        case "left": return .leading
+        case "right": return .trailing
+        default: return .center
+        }
+    }
+
+    private var frameAlignment: Alignment {
+        switch lyricAlignment {
+        case "left": return .leading
+        case "right": return .trailing
+        default: return .center
+        }
     }
 
     var body: some View {
         Group {
-            if isLoading {
+            if player.isLoadingLyrics && player.lyricLines.isEmpty {
                 ProgressView()
-            } else if let errorText {
-                Text(errorText)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 24)
-            } else if lines.isEmpty {
-                Text("暂无歌词")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .tint(.white)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if player.lyricLines.isEmpty {
+                VStack(spacing: 8) {
+                    Image(systemName: "text.quote")
+                        .font(.title2)
+                    Text(player.lyricError ?? "暂无歌词")
+                        .font(.subheadline)
+                }
+                .foregroundStyle(.white.opacity(0.55))
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ScrollViewReader { proxy in
                     ScrollView(showsIndicators: false) {
-                        VStack(spacing: 14) {
-                            ForEach(lines) { line in
-                                Text(line.text)
-                                    .font(line.id == currentIndex ? .headline : .subheadline)
-                                    .foregroundStyle(style(for: line))
-                                    .multilineTextAlignment(.center)
-                                    .frame(maxWidth: .infinity)
+                        VStack(alignment: horizontalAlignment, spacing: 18) {
+                            ForEach(player.lyricLines) { line in
+                                lyricRow(line)
                                     .id(line.id)
+                                    .frame(maxWidth: .infinity, alignment: frameAlignment)
+                                    .onTapGesture {
+                                        player.seek(to: line.time)
+                                    }
                             }
                         }
-                        .padding(.vertical, 60)
+                        .padding(.vertical, 90)
+                        .padding(.horizontal, 4)
                     }
-                    .onChange(of: currentIndex) { _, newValue in
+                    .onAppear {
+                        if let index = player.currentLyricIndex {
+                            proxy.scrollTo(index, anchor: .center)
+                        }
+                    }
+                    .onChange(of: player.currentLyricIndex) { _, newValue in
                         guard let newValue else { return }
-                        withAnimation(.easeInOut(duration: 0.25)) {
+                        withAnimation(.spring(response: 0.5, dampingFraction: 0.85)) {
                             proxy.scrollTo(newValue, anchor: .center)
                         }
                     }
                 }
             }
         }
-        .frame(height: 300)
-        .task(id: song.id) {
-            await load()
-        }
     }
 
-    private func style(for line: LyricLine) -> Color {
-        if line.id == currentIndex {
-            return .splayerAccent
-        }
-        if let currentIndex, line.id < currentIndex {
-            return Color.secondary.opacity(0.5)
-        }
-        return Color.primary.opacity(0.85)
-    }
+    private func lyricRow(_ line: LyricLine) -> some View {
+        let index = player.currentLyricIndex
+        let isCurrent = index == line.id
+        let isPassed = index.map { line.id < $0 } ?? false
+        let baseAlpha = isPassed ? max(inactiveAlpha - 0.18, 0.12) : inactiveAlpha
 
-    private func load() async {
-        isLoading = true
-        errorText = nil
-        lines = []
+        return VStack(alignment: horizontalAlignment, spacing: 4) {
+            Text(line.text)
+                .font(
+                    .system(
+                        size: isCurrent ? lyricFontSize * 1.1 : lyricFontSize,
+                        weight: isCurrent ? .semibold : .regular
+                    )
+                )
+                .foregroundStyle(isCurrent ? accent : Color.white.opacity(baseAlpha))
+                .multilineTextAlignment(textAlignment)
+                .lineSpacing(3)
+                .fixedSize(horizontal: false, vertical: true)
+                .shadow(color: .black.opacity(isCurrent ? 0.18 : 0), radius: 6, y: 2)
 
-        do {
-            lines = try await NeteaseAPI().lyric(id: song.id, cookie: player.cookie)
-        } catch {
-            errorText = error.localizedDescription
+            if showTranslation, let translation = line.translation, !translation.isEmpty {
+                Text(translation)
+                    .font(.system(size: lyricFontSize * 0.62, weight: .regular))
+                    .foregroundStyle(.white.opacity(isCurrent ? 0.68 : baseAlpha * 0.75))
+                    .multilineTextAlignment(textAlignment)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
-        isLoading = false
+        .animation(.easeInOut(duration: 0.2), value: isCurrent)
     }
 }

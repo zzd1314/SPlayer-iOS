@@ -28,13 +28,13 @@ struct PlaylistTrackAllResponse: Decodable {
 
 // MARK: - 歌曲
 
-struct Song: Decodable, Identifiable, Hashable {
-    struct Artist: Decodable, Hashable {
+struct Song: Codable, Identifiable, Hashable {
+    struct Artist: Codable, Hashable {
         let id: Int?
         let name: String
     }
 
-    struct Album: Decodable, Hashable {
+    struct Album: Codable, Hashable {
         let id: Int?
         let name: String?
         let picUrl: String?
@@ -72,6 +72,15 @@ struct Song: Decodable, Identifiable, Hashable {
             ?? 0
     }
 
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(name, forKey: .name)
+        try container.encode(artists, forKey: .ar)
+        try container.encode(Album(id: nil, name: albumName, picUrl: albumPicUrl), forKey: .al)
+        try container.encode(duration, forKey: .dt)
+    }
+
     var artistText: String {
         artists.map(\.name).joined(separator: " / ")
     }
@@ -85,4 +94,14 @@ struct CloudSearchResponse: Decodable {
 
     let code: Int
     let result: Result?
+}
+
+// MARK: - 播放进度快照
+
+/// 用于「记忆播放进度」：应用退出后恢复队列与进度
+struct PlaybackSnapshot: Codable {
+    let queue: [Song]
+    let index: Int
+    let time: Double
+    let savedAt: Date
 }

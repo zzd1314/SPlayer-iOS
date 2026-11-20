@@ -38,22 +38,49 @@ struct SearchView: View {
                     }
                 } else {
                     List {
-                        ForEach(songs) { song in
-                            Button {
-                                Task { await player.play(song: song, in: songs) }
-                            } label: {
-                                SongRow(index: nil, song: song)
+                        Section {
+                            ForEach(songs) { song in
+                                Button {
+                                    play(song)
+                                } label: {
+                                    SongRow(index: nil, song: song)
+                                }
+                                .buttonStyle(.plain)
+                                .foregroundStyle(player.currentSong?.id == song.id ? Color.splayerAccent : Color.primary)
                             }
-                            .buttonStyle(.plain)
-                            .foregroundStyle(player.currentSong?.id == song.id ? Color.splayerAccent : Color.primary)
+                        } header: {
+                            Text("找到 \(songs.count) 首歌曲")
                         }
                     }
+                    .listStyle(.plain)
+                    .adaptiveListBackground()
                 }
             }
             .navigationTitle("搜索")
             .searchable(text: $query, prompt: "歌曲 / 歌手")
             .onSubmit(of: .search) {
                 Task { await search() }
+            }
+            .toolbar {
+                if !songs.isEmpty {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button {
+                            Task { await player.play(songs, startAt: 0) }
+                        } label: {
+                            Label("播放全部", systemImage: "play.fill")
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func play(_ song: Song) {
+        Task {
+            if AppSettings.searchPlayBehavior == "current" {
+                await player.play([song], startAt: 0)
+            } else {
+                await player.play(song: song, in: songs)
             }
         }
     }

@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// 歌曲行：序号（可选）+ 歌名 + 歌手 · 专辑
+/// 歌曲行：封面 + 序号（可选）+ 歌名 + 歌手 · 专辑
 struct SongRow: View {
     let index: Int?
     let song: Song
@@ -11,8 +11,10 @@ struct SongRow: View {
                 Text("\(index)")
                     .font(.footnote.monospacedDigit())
                     .foregroundStyle(.secondary)
-                    .frame(width: 26, alignment: .trailing)
+                    .frame(width: 24, alignment: .trailing)
             }
+
+            CoverImage(urlString: song.albumPicUrl, size: 42, cornerRadius: 6)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(song.name)

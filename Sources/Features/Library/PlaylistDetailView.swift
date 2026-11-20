@@ -16,12 +16,13 @@ struct PlaylistDetailView: View {
         List {
             Section {
                 header
+                    .listRowBackground(Color.clear)
             }
 
             Section {
                 ForEach(Array(songs.enumerated()), id: \.offset) { index, song in
                     Button {
-                        Task { await player.play(song: song, in: songs) }
+                        play(song)
                     } label: {
                         SongRow(index: index + 1, song: song)
                     }
@@ -36,10 +37,27 @@ struct PlaylistDetailView: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 24)
                 }
+            } header: {
+                if !songs.isEmpty {
+                    Text("\(songs.count) 首歌曲")
+                }
             }
         }
+        .listStyle(.plain)
+        .adaptiveListBackground()
         .navigationTitle(playlist.name)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if !songs.isEmpty {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        Task { await player.play(songs, startAt: 0) }
+                    } label: {
+                        Label("播放全部", systemImage: "play.fill")
+                    }
+                }
+            }
+        }
         .task {
             if songs.isEmpty {
                 await load()
@@ -66,11 +84,12 @@ struct PlaylistDetailView: View {
     }
 
     private var header: some View {
-        HStack(alignment: .top, spacing: 12) {
-            CoverImage(urlString: playlist.coverImgUrl, size: 84, cornerRadius: 10)
-            VStack(alignment: .leading, spacing: 4) {
+        HStack(alignment: .top, spacing: 14) {
+            CoverImage(urlString: playlist.coverImgUrl, size: 96, cornerRadius: 12)
+            VStack(alignment: .leading, spacing: 5) {
                 Text(playlist.name)
                     .font(.headline)
+                    .lineLimit(2)
                 if let creator = playlist.creator?.nickname {
                     Text(creator)
                         .font(.caption)
@@ -80,8 +99,19 @@ struct PlaylistDetailView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+            Spacer(minLength: 0)
         }
         .padding(.vertical, 4)
+    }
+
+    private func play(_ song: Song) {
+        Task {
+            if AppSettings.songListPlayBehavior == "current" {
+                await player.play([song], startAt: 0)
+            } else {
+                await player.play(song: song, in: songs)
+            }
+        }
     }
 
     private func load() async {

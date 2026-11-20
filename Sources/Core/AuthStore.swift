@@ -23,6 +23,27 @@ final class AuthStore: ObservableObject {
         await refreshProfile()
     }
 
+    /// 发送登录验证码（手机号 / 邮箱）
+    func sendLoginCaptcha(phone: String? = nil, email: String? = nil, countryCode: String = "86") async throws {
+        try await NeteaseAPI().sendCaptcha(phone: phone, email: email, countryCode: countryCode)
+    }
+
+    /// 手机号验证码登录
+    func login(phone: String, captcha: String, countryCode: String) async throws {
+        let cookie = try await NeteaseAPI().loginCellphone(
+            phone: phone,
+            captcha: captcha,
+            countryCode: countryCode
+        )
+        await signIn(cookie: cookie)
+    }
+
+    /// 邮箱验证码登录
+    func login(email: String, captcha: String) async throws {
+        let cookie = try await NeteaseAPI().loginEmail(email: email, captcha: captcha)
+        await signIn(cookie: cookie)
+    }
+
     func signOut() {
         cookie = nil
         profile = nil

@@ -5,6 +5,15 @@ struct LyricLine: Identifiable, Equatable {
     let id: Int
     let time: TimeInterval
     let text: String
+    var translation: String?
+}
+
+struct LyricBundle {
+    let lines: [LyricLine]
+
+    var hasTranslation: Bool {
+        lines.contains { $0.translation?.isEmpty == false }
+    }
 }
 
 struct LyricResponse: Decodable {
@@ -15,12 +24,41 @@ struct LyricResponse: Decodable {
 }
 
 enum LRC {
+    private static let tagRegex = try? NSRegularExpression(
+        pattern: "\\[(\\d{1,3}):(\\d{1,2})(?:[.:](\\d{1,3}))?\\]"
+    )
+
     /// 解析 LRC 文本：支持 [mm:ss.xx] / [mm:ss.xxx] / [mm:ss:xx] 及一行多标签
     static func parse(_ raw: String) -> [LyricLine] {
-        guard let regex = try? NSRegularExpression(pattern: "\\[(\\d{1,3}):(\\d{1,2})(?:[.:](\\d{1,3}))?\\]") else {
-            return []
+        entries(raw).enumerated().map { index, item in
+            LyricLine(id: index, time: item.time, text: item.text)
+        }
+    }
+
+    /// 同时解析原文与翻译，按时间就近合并
+    static func parse(_ raw: String, translation rawTranslation: String?) -> LyricBundle {
+        let main = LRC.entries(raw)
+        let translations = LRC.entries(rawTranslation ?? "")
+
+        var translationMap: [Int: String] = [:]
+        for item in translations {
+            translationMap[Int((item.time * 100).rounded())] = item.text
         }
 
+        let lines = main.enumerated().map { index, item -> LyricLine in
+            let key = Int((item.time * 100).rounded())
+            let translation = translationMap[key]
+                ?? translationMap[key - 1]
+                ?? translationMap[key + 1]
+                ?? translationMap[key - 2]
+                ?? translationMap[key + 2]
+            return LyricLine(id: index, time: item.time, text: item.text, translation: translation)
+        }
+        return LyricBundle(lines: lines)
+    }
+
+    private static func entries(_ raw: String) -> [(time: TimeInterval, text: String)] {
+        guard let regex = tagRegex else { return [] }
         var parsed: [(time: TimeInterval, text: String)] = []
 
         for rawLine in raw.components(separatedBy: .newlines) {
@@ -53,15 +91,13 @@ enum LRC {
         }
 
         parsed.sort { $0.time < $1.time }
-        return parsed.enumerated().map { index, item in
-            LyricLine(id: index, time: item.time, text: item.text)
-        }
+        return parsed
     }
 }
 
 extension NeteaseAPI {
-    /// 获取并解析歌词（含翻译参数，暂只使用原文）
-    func lyric(id: Int, cookie: String?) async throws -> [LyricLine] {
+    /// 获取并解析歌词（原文 + 翻译）
+    func lyricBundle(id: Int, cookie: String?) async throws -> LyricBundle {
         let response: LyricResponse = try await get(
             "/lyric",
             query: ["id": String(id), "lv": "-1", "tv": "-1"],
@@ -70,6 +106,6 @@ extension NeteaseAPI {
         guard response.code == 200 else {
             throw APIError.business(code: response.code, message: "获取歌词失败")
         }
-        return LRC.parse(response.lrc?.lyric ?? "")
+        return LRC.parse(response.lrc?.lyric ?? "", translation: response.tlyric?.lyric)
     }
 }
