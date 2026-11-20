@@ -104,11 +104,11 @@ extension NeteaseAPI {
         return (response.msgs ?? [], response.more ?? false)
     }
 
-    /// 发送私信
+    /// 发送私信（api-enhanced 的发送接口为 /send/text）
     func sendPrivateMessage(uid: Int, text: String, cookie: String) async throws {
         let response: OperationResponse = try await get(
-            "/msg/private/send",
-            query: ["uid": String(uid), "msg": text],
+            "/send/text",
+            query: ["user_ids": String(uid), "msg": text],
             cookie: cookie
         )
         guard response.code == 200 else {

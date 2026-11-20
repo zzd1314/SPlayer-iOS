@@ -33,7 +33,7 @@ enum APIError: LocalizedError {
 struct NeteaseAPI {
     var baseURL: String
 
-    init(baseURL: String = AppSettings.baseURL) {
+    init(baseURL: String = AppSettings.activeBaseURL) {
         self.baseURL = baseURL
     }
 

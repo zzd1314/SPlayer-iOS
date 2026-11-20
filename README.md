@@ -3,7 +3,7 @@
 SPlayer-Next（[SPlayer-Dev/SPlayer-Next](https://github.com/SPlayer-Dev/SPlayer-Next)）的独立 SwiftUI iOS 客户端。
 
 - 目标设备：iPhone SE2（375×667）/ iOS 17+
-- 数据层：自建 NeteaseCloudMusicApi Enhanced（局域网 / Tailscale）
+- 数据层：内置 Rust 版网易云 API（[ncm-api-rs](https://github.com/SPlayer-Dev/ncm-api-rs)，本机 `127.0.0.1`），可切回自建 NeteaseCloudMusicApi Enhanced
 - 构建：GitHub Actions 云端产出未签名 IPA，Sideloadly 自签安装
 - 主色 `#FE7971`，支持深色模式
 
@@ -43,6 +43,7 @@ SPlayer-Next（[SPlayer-Dev/SPlayer-Next](https://github.com/SPlayer-Dev/SPlayer
 - [x] M32 桌面版式改版：左侧图标栏 + 顶部导航栏 + 底部整条播放栏、发现页、双栏设置弹窗
 - [x] M33 登录接口改为 POST 表单，非 2xx 时透出服务端真实原因（验证码错误 / 安全验证等）
 - [x] M34 手机号密码登录（验证码登录被风控拦截时的替代方式），风控提示可直接切换登录方式
+- [x] M35 内置网易云 API：Rust `ncm-api-rs` 编译为 iOS 静态库，App 内启动 `127.0.0.1` 本地服务，无需自建服务器；设置页保留自建服务器开关
 
 ## 平台差异（iOS 限制）
 
@@ -52,9 +53,21 @@ SPlayer-Next（[SPlayer-Dev/SPlayer-Next](https://github.com/SPlayer-Dev/SPlayer
 - 桌面歌词窗口：iOS 以锁屏控制中心歌词、歌词页与小组件替代
 - 听歌识曲：桌面端依赖 AFP 指纹库（afp.js / afp.wasm）本地计算指纹，暂未移植
 
+## 内置 API 服务
+
+App 内置 Rust 版网易云 API（`ncm-api-rs`，api-enhanced 的 1:1 移植），启动时在 `127.0.0.1` 拉起本地 HTTP 服务，默认无需任何服务器。设置 → 服务器设置中可关闭内置服务并填写自建 NeteaseCloudMusicApi Enhanced 地址作为回退。
+
+本地构建需要 Rust 与 iOS target：
+
+```bash
+rustup target add aarch64-apple-ios aarch64-apple-ios-sim
+```
+
+Xcode 构建时会自动调用 `rust/build-ios.sh` 生成静态库；CI 中该步骤提前执行并缓存 `rust/target`。
+
 ## 构建
 
-推送即触发 `.github/workflows/ios.yml`（macos-15）：XcodeGen 生成工程 → xcodebuild 未签名构建 → 打包 IPA → Actions Artifact 下载（保留 30 天）。
+推送即触发 `.github/workflows/ios.yml`（macos-15）：Rust 静态库交叉编译 → XcodeGen 生成工程 → xcodebuild 未签名构建 → 打包 IPA → Actions Artifact 下载（保留 30 天）。
 
 ## 安装（Sideloadly，7 天续签）
 

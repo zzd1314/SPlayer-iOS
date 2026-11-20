@@ -75,6 +75,21 @@ enum AppSettings {
         set { store.set(newValue, forKey: "apiBaseURL") }
     }
 
+    /// 是否使用内置 API 服务（Rust 本地服务），默认开启
+    static var useBuiltinAPI: Bool {
+        get { boolValue("useBuiltinAPI", true) }
+        set { store.set(newValue, forKey: "useBuiltinAPI") }
+    }
+
+    /// 实际请求使用的 API 地址：内置服务优先，启动失败时回退到自建服务器
+    static var activeBaseURL: String {
+        guard useBuiltinAPI else { return baseURL }
+        if BuiltinAPIService.shared.start(), let url = BuiltinAPIService.shared.baseURL {
+            return url
+        }
+        return baseURL
+    }
+
     // MARK: - 常规
 
     static var autoPlay: Bool {
@@ -283,7 +298,7 @@ enum AppSettings {
     // MARK: - 重置
 
     private static let allKeys = [
-        "apiBaseURL", "audioLevel", "autoPlay", "rememberLastTrack", "showLyricInBar",
+        "apiBaseURL", "useBuiltinAPI", "audioLevel", "autoPlay", "rememberLastTrack", "showLyricInBar",
         "searchPlayBehavior", "songListPlayBehavior", "searchHistory", "preloadNextTrack", "playbackRate", "keepScreenAwake",
         "timeFormat", "showTranslation", "showRomanization", "lyricOffset", "lyricFontSize", "lyricAlignment", "inactiveAlpha",
         "followCoverColor", "liveActivityEnabled", "themeMode", "themeSource", "customThemeColor",

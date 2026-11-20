@@ -145,8 +145,8 @@ extension NeteaseAPI {
     /// 电台详情
     func podcastRadioDetail(id: Int, cookie: String?) async throws -> PodcastRadio {
         let response: RadioDetailResponse = try await get(
-            "/djradio/detail",
-            query: ["id": "\(id)"],
+            "/dj/detail",
+            query: ["rid": "\(id)"],
             cookie: cookie
         )
         guard response.code == 200, let radio = response.data else {
