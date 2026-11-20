@@ -182,22 +182,32 @@ struct LikedSongsView: View {
         do {
             let api = NeteaseAPI()
             let allIds = try await api.likeList(uid: uid, cookie: cookie)
-            // likelist 不保证收藏时间顺序，改用歌单 trackIds 的顺序（最新收藏在前）
-            let orderedIds = (try? await api.likedTrackIds(uid: uid, cookie: cookie)) ?? []
             let allSet = Set(allIds)
             var seen = Set<Int>()
-            var ids: [Int] = []
-            for id in orderedIds where allSet.contains(id) {
-                if seen.insert(id).inserted { ids.append(id) }
-            }
-            for id in allIds where seen.insert(id).inserted {
-                ids.append(id)
-            }
+            var result: [Song] = []
 
-            let fetched = try await api.songDetails(ids: ids, cookie: cookie)
-            // /song/detail 的返回顺序不保证与请求一致，按 id 顺序还原
-            let byId = Dictionary(fetched.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-            songs = ids.compactMap { byId[$0] }
+            // 与桌面端一致：使用歌单详情 tracks 的数组顺序（最新收藏在前）
+            let detail: (tracks: [Song], trackIds: [Int]) =
+                (try? await api.likedPlaylist(uid: uid, cookie: cookie)) ?? (tracks: [], trackIds: [])
+            for song in detail.tracks where allSet.contains(song.id) {
+                if seen.insert(song.id).inserted { result.append(song) }
+            }
+            // tracks 未覆盖的曲目（超过单次返回上限时）按 trackIds 顺序补齐
+            let missingIds = detail.trackIds.filter { allSet.contains($0) && !seen.contains($0) }
+            if !missingIds.isEmpty {
+                let fetched = try await api.songDetails(ids: missingIds, cookie: cookie)
+                let byId = Dictionary(fetched.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+                for id in missingIds {
+                    if let song = byId[id], seen.insert(id).inserted { result.append(song) }
+                }
+            }
+            // 兜底：歌单详情不可用时回退到 likelist 顺序
+            if result.isEmpty {
+                let fetched = try await api.songDetails(ids: allIds, cookie: cookie)
+                let byId = Dictionary(fetched.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+                result = allIds.compactMap { byId[$0] }
+            }
+            songs = result
         } catch {
             errorText = error.localizedDescription
         }
