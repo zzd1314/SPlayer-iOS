@@ -1,8 +1,21 @@
 import SwiftUI
 
-/// 根视图：M2 起将根据登录态切换 登录页 / 主界面
+/// 根视图：未登录显示扫码登录，已登录进入主界面
 struct RootView: View {
+    @StateObject private var auth = AuthStore()
+
     var body: some View {
-        MainTabView()
+        Group {
+            if auth.isLoggedIn {
+                MainTabView()
+            } else {
+                LoginView()
+            }
+        }
+        .environmentObject(auth)
+        .tint(.splayerAccent)
+        .task {
+            await auth.refreshProfile()
+        }
     }
 }
