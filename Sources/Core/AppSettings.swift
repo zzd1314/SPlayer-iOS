@@ -104,6 +104,27 @@ enum AppSettings {
         set { store.set(newValue, forKey: "songListPlayBehavior") }
     }
 
+    // MARK: - 搜索
+
+    /// 最近搜索关键词（最多 10 条，最新在前）
+    static var searchHistory: [String] {
+        get { store.stringArray(forKey: "searchHistory") ?? [] }
+        set { store.set(Array(newValue.prefix(10)), forKey: "searchHistory") }
+    }
+
+    static func addSearchHistory(_ keyword: String) {
+        let value = keyword.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty else { return }
+        var items = searchHistory
+        items.removeAll { $0.caseInsensitiveCompare(value) == .orderedSame }
+        items.insert(value, at: 0)
+        searchHistory = items
+    }
+
+    static func clearSearchHistory() {
+        store.removeObject(forKey: "searchHistory")
+    }
+
     // MARK: - 播放
 
     /// standard / higher / exhigh / lossless / hires
@@ -263,7 +284,7 @@ enum AppSettings {
 
     private static let allKeys = [
         "apiBaseURL", "audioLevel", "autoPlay", "rememberLastTrack", "showLyricInBar",
-        "searchPlayBehavior", "songListPlayBehavior", "preloadNextTrack", "playbackRate", "keepScreenAwake",
+        "searchPlayBehavior", "songListPlayBehavior", "searchHistory", "preloadNextTrack", "playbackRate", "keepScreenAwake",
         "timeFormat", "showTranslation", "showRomanization", "lyricOffset", "lyricFontSize", "lyricAlignment", "inactiveAlpha",
         "followCoverColor", "liveActivityEnabled", "themeMode", "themeSource", "customThemeColor",
         "appearanceStyle", "backgroundBlur", "backgroundDim", "backgroundRevision",

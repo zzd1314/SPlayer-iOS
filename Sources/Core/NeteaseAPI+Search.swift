@@ -52,6 +52,34 @@ struct AlbumDetailResponse: Decodable {
     let songs: [Song]?
 }
 
+/// 热搜榜（/search/hot/detail）
+struct HotSearchResponse: Decodable {
+    struct Item: Decodable, Identifiable {
+        let searchWord: String
+        let score: Int?
+        let content: String?
+
+        var id: String { searchWord }
+    }
+
+    let code: Int
+    let data: [Item]?
+}
+
+/// 搜索建议（/search/suggest）
+struct SearchSuggestResponse: Decodable {
+    struct Result: Decodable {
+        struct Match: Decodable {
+            let keyword: String
+        }
+
+        let allMatch: [Match]?
+    }
+
+    let code: Int
+    let result: Result?
+}
+
 extension NeteaseAPI {
     /// 歌手搜索
     func searchArtists(
@@ -180,5 +208,29 @@ extension NeteaseAPI {
                 message: response.message ?? response.msg ?? "专辑收藏操作失败"
             )
         }
+    }
+
+    /// 热搜榜
+    func hotSearches(cookie: String? = nil) async throws -> [HotSearchResponse.Item] {
+        let response: HotSearchResponse = try await get(
+            "/search/hot/detail",
+            query: [:],
+            cookie: cookie
+        )
+        guard response.code == 200 else {
+            throw APIError.business(code: response.code, message: "获取热搜失败")
+        }
+        return response.data ?? []
+    }
+
+    /// 搜索建议（关键词补全）
+    func searchSuggest(keywords: String, cookie: String? = nil) async throws -> [String] {
+        let response: SearchSuggestResponse = try await get(
+            "/search/suggest",
+            query: ["keywords": keywords, "type": "mobile"],
+            cookie: cookie
+        )
+        guard response.code == 200 else { return [] }
+        return (response.result?.allMatch ?? []).map(\.keyword)
     }
 }

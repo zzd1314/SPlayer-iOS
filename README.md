@@ -31,6 +31,7 @@ SPlayer-Next（[SPlayer-Dev/SPlayer-Next](https://github.com/SPlayer-Dev/SPlayer
 - [x] M20 多服务器：Subsonic / Navidrome、Jellyfin、Emby 配置、浏览与播放
 - [x] M21 播客电台（热门电台 / 推荐节目 / 节目详情与播放）、全部歌手
 - [x] M22 评论扩展至专辑 / 歌单 / MV、收藏专辑列表
+- [x] M23 搜索增强：热搜榜 / 搜索建议 / 搜索历史
 
 ## 构建
 

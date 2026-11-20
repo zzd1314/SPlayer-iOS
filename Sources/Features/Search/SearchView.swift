@@ -26,6 +26,10 @@ struct SearchView: View {
     @State private var isSearching = false
     @State private var errorText: String?
     @State private var lastQuery: String?
+    @State private var suggestions: [String] = []
+    @State private var hotItems: [HotSearchResponse.Item] = []
+    @State private var history: [String] = AppSettings.searchHistory
+    @State private var isLoadingHot = false
 
     var body: some View {
         NavigationStack {
@@ -43,8 +47,22 @@ struct SearchView: View {
             }
             .navigationTitle("搜索")
             .searchable(text: $query, prompt: "歌曲 / 歌手 / 专辑 / 歌单 / MV")
+            .searchSuggestions {
+                ForEach(suggestions, id: \.self) { keyword in
+                    Label(keyword, systemImage: "magnifyingglass")
+                        .searchCompletion(keyword)
+                }
+            }
             .onSubmit(of: .search) {
                 Task { await search() }
+            }
+            .task(id: query) {
+                await updateSuggestions()
+            }
+            .task {
+                if hotItems.isEmpty {
+                    await loadHot()
+                }
             }
             .onChange(of: category) { _, _ in
                 guard let lastQuery, !lastQuery.isEmpty else { return }
@@ -94,8 +112,10 @@ struct SearchView: View {
                         Task { await search() }
                     }
                 }
-            } else if let lastQuery {
+            } else if let lastQuery, !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 ContentUnavailableView.search(text: lastQuery)
+            } else if !history.isEmpty || !hotItems.isEmpty {
+                discovery
             } else {
                 ContentUnavailableView(
                     "搜索",
@@ -105,6 +125,87 @@ struct SearchView: View {
             }
         } else {
             results
+        }
+    }
+
+    /// 搜索发现：最近搜索 + 热搜榜
+    private var discovery: some View {
+        List {
+            if !history.isEmpty {
+                Section {
+                    ForEach(history, id: \.self) { keyword in
+                        Button {
+                            applySuggestion(keyword)
+                        } label: {
+                            HStack(spacing: 10) {
+                                Image(systemName: "clock.arrow.circlepath")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                Text(keyword)
+                                    .font(.subheadline)
+                                    .lineLimit(1)
+                                Spacer(minLength: 0)
+                            }
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.primary)
+                    }
+                } header: {
+                    HStack {
+                        Text("最近搜索")
+                        Spacer()
+                        Button("清空") {
+                            AppSettings.clearSearchHistory()
+                            history = []
+                        }
+                        .font(.caption)
+                        .buttonStyle(.borderless)
+                    }
+                }
+            }
+
+            if !hotItems.isEmpty {
+                Section {
+                    ForEach(hotItems.indices, id: \.self) { index in
+                        let item = hotItems[index]
+                        Button {
+                            applySuggestion(item.searchWord)
+                        } label: {
+                            HStack(spacing: 10) {
+                                Text("\(index + 1)")
+                                    .font(.subheadline.weight(.semibold).monospacedDigit())
+                                    .foregroundStyle(index < 3 ? Color.splayerAccent : Color.secondary)
+                                    .frame(width: 24, alignment: .trailing)
+
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(item.searchWord)
+                                        .font(.subheadline)
+                                        .lineLimit(1)
+                                    if let content = item.content, !content.isEmpty {
+                                        Text(content)
+                                            .font(.caption2)
+                                            .foregroundStyle(.secondary)
+                                            .lineLimit(1)
+                                    }
+                                }
+
+                                Spacer(minLength: 0)
+                            }
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.primary)
+                    }
+                } header: {
+                    Label("热搜榜", systemImage: "flame.fill")
+                }
+            }
+        }
+        .listStyle(.plain)
+        .adaptiveListBackground()
+        .refreshable {
+            await loadHot()
         }
     }
 
@@ -215,9 +316,42 @@ struct SearchView: View {
         }
     }
 
+    private func applySuggestion(_ keyword: String) {
+        query = keyword
+        Task { await search() }
+    }
+
+    /// 输入防抖后请求搜索建议
+    private func updateSuggestions() async {
+        let keyword = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !keyword.isEmpty, keyword != lastQuery else {
+            suggestions = []
+            return
+        }
+
+        try? await Task.sleep(nanoseconds: 300_000_000)
+        guard !Task.isCancelled else { return }
+
+        suggestions = (try? await NeteaseAPI().searchSuggest(
+            keywords: keyword,
+            cookie: auth.cookie
+        )) ?? []
+    }
+
+    private func loadHot() async {
+        guard !isLoadingHot else { return }
+        isLoadingHot = true
+        defer { isLoadingHot = false }
+
+        hotItems = (try? await NeteaseAPI().hotSearches(cookie: auth.cookie)) ?? []
+    }
+
     private func search() async {
         let keyword = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !keyword.isEmpty, !isSearching else { return }
+
+        AppSettings.addSearchHistory(keyword)
+        history = AppSettings.searchHistory
 
         isSearching = true
         errorText = nil
