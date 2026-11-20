@@ -386,7 +386,10 @@ final class PluginRuntime {
             return PluginMenu(id: id, label: label)
         }
         let sources = (object["sources"] as? [String: Any] ?? [:])
-            .compactMapValues { PluginSource(dictionary: $0) }
+            .compactMapValues { value -> PluginSource? in
+                guard let dictionary = value as? [String: Any] else { return nil }
+                return PluginSource(dictionary: dictionary)
+            }
         manager?.applyRegistration(pluginID: pluginID, settings: settings, menus: menus, sources: sources)
     }
 
