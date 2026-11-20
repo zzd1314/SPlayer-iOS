@@ -174,11 +174,52 @@ extension NeteaseAPI {
     /// 整个响应解析失败，从而避免静默退回旧的 likelist 顺序。
     /// `uid` 同时是「我喜欢的音乐」这个特殊歌单的 id。
     func likedPlaylistTrackIDs(uid: Int, cookie: String) async throws -> [Int] {
+        // 优先直连 music.163.com 网页版接口：内置服务在本机部分环境下的 /playlist/detail 会失败
+        if let data = try? await directPlaylistDetailData(uid: uid, cookie: cookie),
+           let ids = try? Self.playlistTrackIDs(from: data),
+           !ids.isEmpty {
+            return ids
+        }
         let data = try await getData(
             "/playlist/detail",
             query: ["id": String(uid)],
             cookie: cookie
         )
+        let ids = try Self.playlistTrackIDs(from: data)
+        guard !ids.isEmpty else { throw APIError.invalidResponse }
+        return ids
+    }
+
+    /// 直连 music.163.com 的歌单详情（免加密通道，带登录 Cookie 访问私有歌单）
+    private func directPlaylistDetailData(uid: Int, cookie: String) async throws -> Data {
+        guard var components = URLComponents(string: "https://music.163.com/api/v6/playlist/detail") else {
+            throw APIError.badURL
+        }
+        components.queryItems = [
+            URLQueryItem(name: "id", value: String(uid)),
+            URLQueryItem(name: "n", value: "100000"),
+            URLQueryItem(name: "s", value: "0"),
+        ]
+        guard let url = components.url else { throw APIError.badURL }
+
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 15
+        request.setValue(cookie, forHTTPHeaderField: "Cookie")
+        request.setValue(
+            "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148",
+            forHTTPHeaderField: "User-Agent"
+        )
+        request.setValue("https://music.163.com", forHTTPHeaderField: "Referer")
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
+            throw APIError.invalidResponse
+        }
+        return data
+    }
+
+    /// 从歌单详情 JSON 提取曲目顺序：tracks 数组顺序在前，trackIds 补充未覆盖的曲目
+    static func playlistTrackIDs(from data: Data) throws -> [Int] {
         guard
             let object = try? JSONSerialization.jsonObject(with: data),
             let root = object as? [String: Any],
