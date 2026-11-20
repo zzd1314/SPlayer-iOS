@@ -1,0 +1,14 @@
+# XcodeGen 生成物
+*.xcodeproj
+
+# 构建产物
+build/
+DerivedData/
+Payload/
+*.ipa
+build.log
+
+# macOS / Xcode
+.DS_Store
+xcuserdata/
+*.xcscmblueprint
