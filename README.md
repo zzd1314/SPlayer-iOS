@@ -12,7 +12,7 @@ SPlayer-Next（[SPlayer-Dev/SPlayer-Next](https://github.com/SPlayer-Dev/SPlayer
 - [x] M1 仓库骨架 + CI 构建 + 空 Tab
 - [x] M2 QR 扫码登录（Keychain 存储 MUSIC_U）
 - [x] M3 歌单列表 / 详情 / 搜索
-- [ ] M4 播放 + 本地缓存 + 后台/锁屏控制
+- [x] M4 播放 + 本地缓存 + 后台/锁屏控制
 - [ ] M5 歌词滚动 + 设置页
 - [ ] M6 预载下一曲 / 错误态打磨
 

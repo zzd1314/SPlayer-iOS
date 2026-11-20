@@ -49,7 +49,7 @@ struct SettingsView: View {
 
                 Section("关于") {
                     LabeledContent("版本", value: appVersion)
-                    LabeledContent("阶段", value: "M3 歌单与搜索")
+                    LabeledContent("阶段", value: "M4 播放与缓存")
                 }
             }
             .navigationTitle("设置")

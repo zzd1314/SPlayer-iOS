@@ -3,6 +3,7 @@ import SwiftUI
 /// 搜索：歌曲搜索（/cloudsearch?type=1）
 struct SearchView: View {
     @EnvironmentObject private var auth: AuthStore
+    @EnvironmentObject private var player: PlayerStore
 
     @State private var query = ""
     @State private var songs: [Song] = []
@@ -38,7 +39,13 @@ struct SearchView: View {
                 } else {
                     List {
                         ForEach(songs) { song in
-                            SongRow(index: nil, song: song)
+                            Button {
+                                Task { await player.play(song: song, in: songs) }
+                            } label: {
+                                SongRow(index: nil, song: song)
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(player.currentSong?.id == song.id ? Color.splayerAccent : Color.primary)
                         }
                     }
                 }

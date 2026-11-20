@@ -5,6 +5,7 @@ struct PlaylistDetailView: View {
     let playlist: Playlist
 
     @EnvironmentObject private var auth: AuthStore
+    @EnvironmentObject private var player: PlayerStore
 
     @State private var songs: [Song] = []
     @State private var isLoading = false
@@ -18,7 +19,13 @@ struct PlaylistDetailView: View {
 
             Section {
                 ForEach(Array(songs.enumerated()), id: \.offset) { index, song in
-                    SongRow(index: index + 1, song: song)
+                    Button {
+                        Task { await player.play(song: song, in: songs) }
+                    } label: {
+                        SongRow(index: index + 1, song: song)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(player.currentSong?.id == song.id ? Color.splayerAccent : Color.primary)
                 }
             }
         }
