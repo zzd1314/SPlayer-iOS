@@ -134,20 +134,29 @@ jobs:
 
       - name: Prepare release notes
         if: success()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           VERSION=$(sed -n 's/.*MARKETING_VERSION: *"\([0-9][0-9.]*\)".*/\1/p' project.yml | head -1)
           BUILD=$(sed -n 's/.*CURRENT_PROJECT_VERSION: *"\([0-9]*\)".*/\1/p' project.yml | head -1)
-          PREV=$(git describe --tags --abbrev=0 --match 'v[0-9]*' 2>/dev/null || true)
-          {
-            echo "## v${VERSION}（构建 ${BUILD}）"
-            echo ""
-            if [ -n "$PREV" ]; then
-              git log "${PREV}..HEAD" --no-merges --pretty=format:"- %s" || true
+          TAG="v${VERSION}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            # 同版本重复构建：保留已有更新条目，只刷新底部构建信息
+            gh release view "$TAG" --json body -q .body | grep -v '^构建时间：' > release-notes.md || true
+          else
+            PREV=$(git describe --tags --abbrev=0 --match 'v[0-9]*' 2>/dev/null || true)
+            {
+              echo "## ${TAG}（构建 ${BUILD}）"
+              echo ""
+              if [ -n "$PREV" ]; then
+                git log "${PREV}..HEAD" --no-merges --pretty=format:"- %s" || true
+                echo ""
+              fi
+            } > release-notes.md
+            if [ "$(grep -c '^- ' release-notes.md || true)" -eq 0 ]; then
+              echo "- $(git log -1 --pretty=format:'%s')" >> release-notes.md
             fi
-          } > release-notes.md
-          if [ "$(grep -c '^- ' release-notes.md || true)" -eq 0 ]; then
-            echo "- $(git log -1 --pretty=format:'%s')" >> release-notes.md
           fi
           {
             echo ""
