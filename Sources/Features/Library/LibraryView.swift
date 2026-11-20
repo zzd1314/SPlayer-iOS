@@ -185,7 +185,7 @@ struct LibraryView: View {
     }
 }
 
-private struct PlaylistCard: View {
+struct PlaylistCard: View {
     let playlist: Playlist
 
     var body: some View {

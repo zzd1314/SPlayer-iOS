@@ -11,6 +11,7 @@ struct SongRow: View {
     @EnvironmentObject private var player: PlayerStore
 
     @State private var isLikeBusy = false
+    @State private var showAddToPlaylist = false
 
     var body: some View {
         HStack(spacing: 10) {
@@ -51,6 +52,18 @@ struct SongRow: View {
             }
         }
         .contentShape(Rectangle())
+        .contextMenu {
+            if auth.isLoggedIn {
+                Button {
+                    showAddToPlaylist = true
+                } label: {
+                    Label("添加到歌单", systemImage: "text.badge.plus")
+                }
+            }
+        }
+        .sheet(isPresented: $showAddToPlaylist) {
+            AddToPlaylistSheet(song: song)
+        }
     }
 
     private var subtitle: String {

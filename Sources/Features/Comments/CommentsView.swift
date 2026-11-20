@@ -17,6 +17,8 @@ struct CommentsView: View {
     @State private var draft = ""
     @State private var isSending = false
     @State private var actionError: String?
+    @State private var isLoadingMore = false
+    @State private var noMore = false
 
     var body: some View {
         NavigationStack {
@@ -45,6 +47,10 @@ struct CommentsView: View {
                                     Task { await toggleLike(comment) }
                                 }
                             )
+                        }
+
+                        if hasMore {
+                            loadMoreRow
                         }
                     }
                 }
@@ -105,6 +111,30 @@ struct CommentsView: View {
         !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !isSending
     }
 
+    private var hasMore: Bool {
+        !noMore && comments.count < total
+    }
+
+    private var loadMoreRow: some View {
+        Button {
+            Task { await loadMore() }
+        } label: {
+            HStack {
+                Spacer()
+                if isLoadingMore {
+                    ProgressView()
+                } else {
+                    Text("加载更多评论（\(max(total - comments.count, 0))）")
+                        .font(.footnote)
+                }
+                Spacer()
+            }
+            .padding(.vertical, 4)
+        }
+        .buttonStyle(.borderless)
+        .disabled(isLoadingMore)
+    }
+
     private var composer: some View {
         HStack(spacing: 10) {
             TextField("说点什么…", text: $draft, axis: .vertical)
@@ -142,8 +172,34 @@ struct CommentsView: View {
             hotComments = result.hot
             comments = result.latest
             total = result.total
+            noMore = result.latest.count >= result.total
         } catch {
             errorText = error.localizedDescription
+        }
+    }
+
+    private func loadMore() async {
+        guard hasMore, !isLoadingMore, !isLoading else { return }
+        isLoadingMore = true
+        defer { isLoadingMore = false }
+
+        do {
+            let result = try await NeteaseAPI().songComments(
+                id: songId,
+                limit: 50,
+                offset: comments.count,
+                cookie: auth.cookie
+            )
+            total = max(total, result.total)
+            let existing = Set(comments.map(\.id))
+            let newItems = result.latest.filter { !existing.contains($0.id) }
+            comments.append(contentsOf: newItems)
+            // 接口返回空或全部重复时，视为已加载完，避免反复请求
+            if newItems.isEmpty {
+                noMore = true
+            }
+        } catch {
+            actionError = error.localizedDescription
         }
     }
 

@@ -2,14 +2,21 @@ import Foundation
 
 // MARK: - 关注 / 收藏 / 评论接口
 
-/// 歌单详情中的收藏状态（/playlist/detail）
+/// 歌单详情中的收藏状态与创建者（/playlist/detail）
 struct PlaylistSubscriptionResponse: Decodable {
     struct Info: Decodable {
         let subscribed: Bool?
+        let creator: Playlist.Creator?
     }
 
     let code: Int
     let playlist: Info?
+}
+
+/// 用户主页信息（/user/detail）
+struct UserDetailResponse: Decodable {
+    let code: Int
+    let profile: UserProfile?
 }
 
 /// 已关注歌手列表（/artist/sublist），兼容 artists / data 两种返回
@@ -60,8 +67,11 @@ struct CommentItem: Decodable, Identifiable {
 }
 
 extension NeteaseAPI {
-    /// 歌单是否已收藏
-    func playlistSubscribed(id: Int, cookie: String?) async throws -> Bool {
+    /// 歌单收藏状态 + 创建者信息
+    func playlistMeta(
+        id: Int,
+        cookie: String?
+    ) async throws -> (subscribed: Bool, creatorId: Int?, creatorName: String?) {
         let response: PlaylistSubscriptionResponse = try await get(
             "/playlist/detail",
             query: ["id": String(id)],
@@ -70,7 +80,52 @@ extension NeteaseAPI {
         guard response.code == 200 else {
             throw APIError.business(code: response.code, message: "获取歌单信息失败")
         }
-        return response.playlist?.subscribed ?? false
+        return (
+            response.playlist?.subscribed ?? false,
+            response.playlist?.creator?.userId,
+            response.playlist?.creator?.nickname
+        )
+    }
+
+    /// 修改歌单歌曲：op 为 add / del
+    func modifyPlaylistTracks(
+        playlistId: Int,
+        op: String,
+        trackIds: [Int],
+        cookie: String
+    ) async throws {
+        guard !trackIds.isEmpty else { return }
+        let response: OperationResponse = try await get(
+            "/playlist/tracks",
+            query: [
+                "op": op,
+                "pid": String(playlistId),
+                "tracks": trackIds.map(String.init).joined(separator: ",")
+            ],
+            cookie: cookie
+        )
+        guard response.code == 200 else {
+            throw APIError.business(
+                code: response.code,
+                message: response.message ?? response.msg ?? "歌单修改失败"
+            )
+        }
+    }
+
+    /// 用户主页信息
+    func userDetail(uid: Int, cookie: String?) async throws -> UserProfile {
+        let response: UserDetailResponse = try await get(
+            "/user/detail",
+            query: ["uid": String(uid)],
+            cookie: cookie
+        )
+        guard response.code == 200 else {
+            throw APIError.business(code: response.code, message: "获取用户信息失败")
+        }
+        guard let profile = response.profile else {
+            throw APIError.business(code: response.code, message: "用户不存在")
+        }
+        return profile
     }
 
     /// 收藏 / 取消收藏歌单

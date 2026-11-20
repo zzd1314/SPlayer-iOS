@@ -6,6 +6,7 @@ struct Playlist: Decodable, Identifiable, Hashable {
     struct Creator: Decodable, Hashable {
         let nickname: String
         let avatarUrl: String?
+        let userId: Int?
     }
 
     let id: Int
@@ -14,6 +15,19 @@ struct Playlist: Decodable, Identifiable, Hashable {
     let trackCount: Int?
     let playCount: Int?
     let creator: Creator?
+}
+
+/// 用户主页信息（/user/detail）
+struct UserProfile: Decodable, Identifiable {
+    let userId: Int
+    let nickname: String
+    let avatarUrl: String?
+    let signature: String?
+    let follows: Int?
+    let followeds: Int?
+    let playlistCount: Int?
+
+    var id: Int { userId }
 }
 
 struct UserPlaylistResponse: Decodable {

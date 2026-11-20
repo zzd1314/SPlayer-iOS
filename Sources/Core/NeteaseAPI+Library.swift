@@ -4,7 +4,7 @@ import Foundation
 
 extension NeteaseAPI {
     /// 用户歌单列表
-    func userPlaylists(uid: Int, cookie: String) async throws -> [Playlist] {
+    func userPlaylists(uid: Int, cookie: String?) async throws -> [Playlist] {
         let response: UserPlaylistResponse = try await get(
             "/user/playlist",
             query: ["uid": String(uid), "limit": "1000"],

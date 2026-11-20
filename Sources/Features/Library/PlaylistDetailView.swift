@@ -15,6 +15,8 @@ struct PlaylistDetailView: View {
     @State private var isSubscribing = false
     @State private var actionError: String?
     @State private var filterText = ""
+    @State private var ownerId: Int?
+    @State private var ownerName: String?
 
     var body: some View {
         List {
@@ -30,6 +32,15 @@ struct PlaylistDetailView: View {
                         .contentShape(Rectangle())
                         .onTapGesture {
                             play(song)
+                        }
+                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                            if isOwnPlaylist, playlist.name != "我喜欢的音乐" {
+                                Button(role: .destructive) {
+                                    Task { await remove(song) }
+                                } label: {
+                                    Label("删除", systemImage: "trash")
+                                }
+                            }
                         }
                 }
 
@@ -127,10 +138,25 @@ struct PlaylistDetailView: View {
                 Text(playlist.name)
                     .font(.headline)
                     .lineLimit(2)
-                if let creator = playlist.creator?.nickname {
-                    Text(creator)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                if let creator = playlist.creator?.nickname ?? ownerName {
+                    if let uid = creatorId {
+                        NavigationLink {
+                            UserProfileView(userId: uid, nickname: creator)
+                        } label: {
+                            HStack(spacing: 3) {
+                                Text(creator)
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 8, weight: .semibold))
+                            }
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        }
+                        .buttonStyle(.plain)
+                    } else {
+                        Text(creator)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
                 Text("\(songs.isEmpty ? (playlist.trackCount ?? 0) : songs.count) 首")
                     .font(.caption)
@@ -139,6 +165,16 @@ struct PlaylistDetailView: View {
             Spacer(minLength: 0)
         }
         .padding(.vertical, 4)
+    }
+
+    private var creatorId: Int? {
+        ownerId ?? playlist.creator?.userId
+    }
+
+    /// 是否为当前登录用户创建的歌单
+    private var isOwnPlaylist: Bool {
+        guard let myId = auth.profile?.userId else { return false }
+        return creatorId == myId
     }
 
     private var visibleSongs: [Song] {
@@ -178,8 +214,30 @@ struct PlaylistDetailView: View {
             errorText = error.localizedDescription
         }
 
-        if let subscribed = try? await api.playlistSubscribed(id: playlist.id, cookie: auth.cookie) {
-            isSubscribed = subscribed
+        if let meta = try? await api.playlistMeta(id: playlist.id, cookie: auth.cookie) {
+            isSubscribed = meta.subscribed
+            if let creatorId = meta.creatorId {
+                ownerId = creatorId
+            }
+            if let name = meta.creatorName {
+                ownerName = name
+            }
+        }
+    }
+
+    /// 从自己的歌单中移除歌曲
+    private func remove(_ song: Song) async {
+        guard let cookie = auth.cookie else { return }
+        do {
+            try await NeteaseAPI().modifyPlaylistTracks(
+                playlistId: playlist.id,
+                op: "del",
+                trackIds: [song.id],
+                cookie: cookie
+            )
+            songs.removeAll { $0.id == song.id }
+        } catch {
+            actionError = error.localizedDescription
         }
     }
 
