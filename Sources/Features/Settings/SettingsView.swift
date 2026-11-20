@@ -14,6 +14,7 @@ private enum SettingsCategory: String, CaseIterable, Identifiable, Hashable {
     case servers
     case cache
     case download
+    case plugins
     case about
 
     var id: String { rawValue }
@@ -28,6 +29,7 @@ private enum SettingsCategory: String, CaseIterable, Identifiable, Hashable {
         case .servers: return "媒体服务器"
         case .cache: return "本地与缓存"
         case .download: return "下载管理"
+        case .plugins: return "插件管理"
         case .about: return "关于软件"
         }
     }
@@ -42,6 +44,7 @@ private enum SettingsCategory: String, CaseIterable, Identifiable, Hashable {
         case .servers: return "Subsonic / Navidrome / Jellyfin / Emby"
         case .cache: return "歌曲缓存、缓存上限、清理"
         case .download: return "已下载歌曲与空间占用"
+        case .plugins: return "本地 / 在线导入、插件市场、启用与配置"
         case .about: return "版本信息、重置设置"
         }
     }
@@ -56,6 +59,7 @@ private enum SettingsCategory: String, CaseIterable, Identifiable, Hashable {
         case .servers: return "externaldrive.connected.to.line.below"
         case .cache: return "internaldrive.fill"
         case .download: return "arrow.down.circle.fill"
+        case .plugins: return "puzzlepiece.extension.fill"
         case .about: return "info.circle.fill"
         }
     }
@@ -70,6 +74,7 @@ private enum SettingsCategory: String, CaseIterable, Identifiable, Hashable {
         case .servers: return .indigo
         case .cache: return .green
         case .download: return .teal
+        case .plugins: return .orange
         case .about: return .gray
         }
     }
@@ -196,6 +201,7 @@ struct SettingsView: View {
         case .servers: MediaServerListView()
         case .cache: CacheSettingsView()
         case .download: DownloadManageView()
+        case .plugins: PluginsView()
         case .about: AboutSettingsView()
         }
     }

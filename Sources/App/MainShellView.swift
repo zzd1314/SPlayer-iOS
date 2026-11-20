@@ -136,6 +136,7 @@ struct MainShellView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     @StateObject private var router = ShellRouter()
+    @ObservedObject private var pluginManager = PluginManager.shared
     /// 已访问过的分区保持挂载，切换时保留滚动位置与加载结果
     @State private var mountedSections: Set<AppSection> = [.home]
 
@@ -168,6 +169,21 @@ struct MainShellView: View {
             }
         }
         .environmentObject(router)
+        .task { @MainActor in
+            pluginManager.start()
+        }
+        .onChange(of: player.currentSong) { _, song in
+            pluginManager.notifyTrackChange(song: song, lyrics: player.lyricLines)
+        }
+        .onChange(of: player.lyricLines) { _, lines in
+            pluginManager.notifyLyricChange(song: player.currentSong, lyrics: lines)
+        }
+        .onChange(of: player.currentLyricIndex) { _, index in
+            let line = index.flatMap { value in
+                player.lyricLines.indices.contains(value) ? player.lyricLines[value] : nil
+            }
+            pluginManager.notifyLineChange(song: player.currentSong, index: index, line: line)
+        }
         .onChange(of: router.section) { _, newValue in
             mountedSections.insert(newValue)
         }

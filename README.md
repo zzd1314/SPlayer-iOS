@@ -45,6 +45,7 @@ SPlayer-Next（[SPlayer-Dev/SPlayer-Next](https://github.com/SPlayer-Dev/SPlayer
 - [x] M34 手机号密码登录（验证码登录被风控拦截时的替代方式），风控提示可直接切换登录方式
 - [x] M35 内置网易云 API：Rust `ncm-api-rs` 编译为 iOS 静态库，App 内启动 `127.0.0.1` 本地服务，无需自建服务器；设置页保留自建服务器开关
 - [x] M36 我喜欢的音乐支持排序切换：收藏时间（最新在前，按「我喜欢的音乐」歌单 trackIds 的 at 时间倒序；歌单 id 取用户歌单列表首项，不能用 uid）/ 歌曲名 / 歌手 / 专辑 / 时长，选择会记忆
+- [x] M37 插件管理：兼容桌面版插件格式（`@id` / `@name` / `@version` / `@apiLevel` 等头部元数据），支持本地 `.js` 导入、在线直链导入、插件市场（SPlayer-Dev/plugins）、启用开关、设置项、检查更新与卸载；基于 JavaScriptCore 运行，提供 storage / settings / request 与 trackChange、lyricChange、lineChange 事件
 
 ## 平台差异（iOS 限制）
 
@@ -53,6 +54,7 @@ SPlayer-Next（[SPlayer-Dev/SPlayer-Next](https://github.com/SPlayer-Dev/SPlayer
 - 均衡器、音量均衡、WASAPI 独占模式：iOS 使用 `AVPlayer` 播放，无法在不重建整套播放/缓存/后台链路的前提下接入 `AVAudioEngine` 音效处理
 - 桌面歌词窗口：iOS 以锁屏控制中心歌词、歌词页与小组件替代
 - 听歌识曲：桌面端依赖 AFP 指纹库（afp.js / afp.wasm）本地计算指纹，暂未移植
+- 插件音源 / 歌词覆盖钩子（`musicSearch`、`musicLyric`、`musicUrl`）：插件导入、管理与播放事件已移植，搜索与歌词播放链路暂未接入
 
 ## 内置 API 服务
 
