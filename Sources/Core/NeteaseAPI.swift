@@ -84,32 +84,24 @@ struct NeteaseAPI {
         return data
     }
 
-    /// POST 表单请求：登录、验证码等含凭据的接口，避免把参数放在 URL 上
-    func post<T: Decodable>(
+    /// GET 并同时返回响应头里的会话 Cookie（扫码登录成功时内置服务只写 Set-Cookie）
+    func getWithCookies<T: Decodable>(
         _ path: String,
-        fields: [String: String] = [:],
+        query: [String: String] = [:],
         cookie: String? = nil
-    ) async throws -> T {
+    ) async throws -> (value: T, cookies: String) {
         guard var components = URLComponents(string: baseURL) else {
             throw APIError.badURL
         }
         components.path = path
-        components.queryItems = [
-            URLQueryItem(name: "timestamp", value: String(Int(Date().timeIntervalSince1970 * 1000)))
-        ]
+        var items = query.map { URLQueryItem(name: $0.key, value: $0.value) }
+        items.append(URLQueryItem(name: "timestamp", value: String(Int(Date().timeIntervalSince1970 * 1000))))
+        components.queryItems = items
+
         guard let url = components.url else { throw APIError.badURL }
 
-        var bodyComponents = URLComponents()
-        bodyComponents.queryItems = fields.map { URLQueryItem(name: $0.key, value: $0.value) }
-
         var request = URLRequest(url: url)
-        request.httpMethod = "POST"
         request.timeoutInterval = 15
-        request.setValue(
-            "application/x-www-form-urlencoded; charset=utf-8",
-            forHTTPHeaderField: "Content-Type"
-        )
-        request.httpBody = bodyComponents.percentEncodedQuery?.data(using: .utf8)
         if let cookie, !cookie.isEmpty {
             request.setValue(cookie, forHTTPHeaderField: "Cookie")
         }
@@ -120,13 +112,98 @@ struct NeteaseAPI {
         }
 
         do {
-            return try JSONDecoder().decode(T.self, from: data)
+            let value = try JSONDecoder().decode(T.self, from: data)
+            return (value, Self.cookieString(from: response as? HTTPURLResponse))
         } catch {
             if let envelope = try? JSONDecoder().decode(ErrorEnvelope.self, from: data) {
                 throw APIError.business(code: envelope.code ?? -1, message: envelope.msg ?? envelope.message)
             }
             throw APIError.invalidResponse
         }
+    }
+
+    /// POST 表单请求：登录、验证码等含凭据的接口，避免把参数放在 URL 上
+    func post<T: Decodable>(
+        _ path: String,
+        fields: [String: String] = [:],
+        cookie: String? = nil
+    ) async throws -> T {
+        try await postResponse(path, fields: fields, cookie: cookie).value
+    }
+
+    /// POST 表单，并返回响应头里的会话 Cookie（内置服务的登录响应不带 cookie 字段）
+    func postResponse<T: Decodable>(
+        _ path: String,
+        fields: [String: String] = [:],
+        cookie: String? = nil
+    ) async throws -> (value: T, cookies: String) {
+        guard var components = URLComponents(string: baseURL) else {
+            throw APIError.badURL
+        }
+        components.path = path
+        components.queryItems = [
+            URLQueryItem(name: "timestamp", value: String(Int(Date().timeIntervalSince1970 * 1000)))
+        ]
+        guard let url = components.url else { throw APIError.badURL }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 15
+        request.setValue(
+            "application/x-www-form-urlencoded; charset=utf-8",
+            forHTTPHeaderField: "Content-Type"
+        )
+        request.httpBody = Self.formEncode(fields).data(using: .utf8)
+        if let cookie, !cookie.isEmpty {
+            request.setValue(cookie, forHTTPHeaderField: "Cookie")
+        }
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
+            throw Self.serverError(from: data, status: http.statusCode)
+        }
+
+        do {
+            let value = try JSONDecoder().decode(T.self, from: data)
+            return (value, Self.cookieString(from: response as? HTTPURLResponse))
+        } catch {
+            if let envelope = try? JSONDecoder().decode(ErrorEnvelope.self, from: data) {
+                throw APIError.business(code: envelope.code ?? -1, message: envelope.msg ?? envelope.message)
+            }
+            throw APIError.invalidResponse
+        }
+    }
+
+    /// 严格表单编码：`+ & = %` 等字符全部转义，避免密码被服务端按表单规则改写
+    private static func formEncode(_ fields: [String: String]) -> String {
+        var allowed = CharacterSet.alphanumerics
+        allowed.insert(charactersIn: "-._~")
+        return fields
+            .map { key, value in
+                let encodedKey = key.addingPercentEncoding(withAllowedCharacters: allowed) ?? ""
+                let encodedValue = value.addingPercentEncoding(withAllowedCharacters: allowed) ?? ""
+                return "\(encodedKey)=\(encodedValue)"
+            }
+            .joined(separator: "&")
+    }
+
+    /// 从响应头 Set-Cookie 提取会话 Cookie（多个头会被系统合并，按已知字段名匹配取值）
+    static func cookieString(from http: HTTPURLResponse?) -> String {
+        guard let http else { return "" }
+        let raw = http.allHeaderFields
+            .filter { ($0.key as? String)?.lowercased() == "set-cookie" }
+            .map { String(describing: $0.value) }
+            .joined(separator: "; ")
+        guard !raw.isEmpty else { return "" }
+
+        let names = ["MUSIC_U", "MUSIC_A", "__csrf", "NMTID", "_ntes_nuid", "__remember_me"]
+        var parts: [String] = []
+        for name in names {
+            guard let range = raw.range(of: "\(name)=") else { continue }
+            let value = raw[range.upperBound...].prefix { $0 != ";" && $0 != "," && !$0.isWhitespace }
+            if !value.isEmpty { parts.append("\(name)=\(value)") }
+        }
+        return parts.joined(separator: "; ")
     }
 
     /// 非 2xx 时尽量取出服务端 JSON 里的原因，避免只显示「HTTP 400」
@@ -301,7 +378,16 @@ extension NeteaseAPI {
 
     /// 轮询扫码状态：800 过期 / 801 未扫码 / 802 待确认 / 803 成功
     func qrCheck(key: String) async throws -> QRCheckResponse {
-        try await get("/login/qr/check", query: ["key": key])
+        let result: (value: QRCheckResponse, cookies: String) = try await getWithCookies(
+            "/login/qr/check",
+            query: ["key": key]
+        )
+        var response = result.value
+        // 扫码成功时部分服务端只在 Set-Cookie 中下发会话，body 里没有 cookie 字段
+        if (response.cookie ?? "").isEmpty, !result.cookies.isEmpty {
+            response = QRCheckResponse(code: response.code, cookie: result.cookies, message: response.message)
+        }
+        return response
     }
 
     /// 当前登录账号
@@ -356,12 +442,13 @@ extension NeteaseAPI {
     }
 
     private func cellphoneLogin(fields: [String: String]) async throws -> String {
-        let response: LoginResponse
+        let result: (value: LoginResponse, cookies: String)
         do {
-            response = try await post("/login/cellphone", fields: fields)
+            result = try await postResponse("/login/cellphone", fields: fields)
         } catch let error as APIError {
             throw Self.authError(error, action: "登录")
         }
+        let response = result.value
         guard response.code == 200 else {
             throw APIError.business(
                 code: response.code,
@@ -371,7 +458,10 @@ extension NeteaseAPI {
                 )
             )
         }
-        guard let cookie = response.cookie, !cookie.isEmpty else {
+        // 内置服务只在响应头写 Set-Cookie，标准服务则在 body 返回 cookie，两者都兼容
+        let bodyCookie = response.cookie ?? ""
+        let cookie = bodyCookie.isEmpty ? result.cookies : bodyCookie
+        guard !cookie.isEmpty else {
             throw APIError.business(code: -1, message: "登录返回的 Cookie 为空，请重试")
         }
         return cookie
@@ -379,15 +469,16 @@ extension NeteaseAPI {
 
     /// 邮箱 + 验证码登录
     func loginEmail(email: String, captcha: String) async throws -> String {
-        let response: LoginResponse
+        let result: (value: LoginResponse, cookies: String)
         do {
-            response = try await post("/login", fields: [
+            result = try await postResponse("/login", fields: [
                 "email": email,
                 "captcha": captcha
             ])
         } catch let error as APIError {
             throw Self.authError(error, action: "登录")
         }
+        let response = result.value
         guard response.code == 200 else {
             throw APIError.business(
                 code: response.code,
@@ -397,7 +488,9 @@ extension NeteaseAPI {
                 )
             )
         }
-        guard let cookie = response.cookie, !cookie.isEmpty else {
+        let bodyCookie = response.cookie ?? ""
+        let cookie = bodyCookie.isEmpty ? result.cookies : bodyCookie
+        guard !cookie.isEmpty else {
             throw APIError.business(code: -1, message: "登录返回的 Cookie 为空，请重试")
         }
         return cookie

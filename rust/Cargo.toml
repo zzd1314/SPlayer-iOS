@@ -10,7 +10,9 @@ crate-type = ["staticlib"]
 
 [dependencies]
 # api-enhanced 的 Rust 原生实现（含 weapi/eapi/linuxapi 加密与 Axum HTTP 服务）
-ncm-api-rs = { git = "https://github.com/SPlayer-Dev/ncm-api-rs", rev = "133b65bfe482e41ebccf018870d3fce07bf58eb3", features = ["server"] }
+# 本地 vendor 自 SPlayer-Dev/ncm-api-rs rev 133b65bfe482e41ebccf018870d3fce07bf58eb3，
+# 修复验证码登录误带 password、登录响应补 body cookie
+ncm-api-rs = { path = "vendor/ncm-api-rs", features = ["server"] }
 tokio = { version = "1", features = ["rt-multi-thread", "net", "time", "io-util"] }
 axum = "0.8"
 serde_json = "1"
