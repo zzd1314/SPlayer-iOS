@@ -24,6 +24,11 @@ struct CloudMusicView: View {
                     .onTapGesture {
                         Task { await player.play(song: song, in: songs) }
                     }
+                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                        Button("删除", role: .destructive) {
+                            Task { await delete(song) }
+                        }
+                    }
             }
         }
         .listStyle(.plain)
@@ -71,7 +76,7 @@ struct CloudMusicView: View {
         } message: {
             Text("歌曲已上传到云盘，正在刷新列表。")
         }
-        .alert("上传失败", isPresented: Binding(
+        .alert("操作失败", isPresented: Binding(
             get: { uploadError != nil },
             set: { if !$0 { uploadError = nil } }
         )) {
@@ -107,6 +112,20 @@ struct CloudMusicView: View {
                     description: Text("点击右上角上传音乐，或在网易云客户端上传后同步到这里")
                 )
             }
+        }
+    }
+
+    private func delete(_ song: Song) async {
+        guard let cookie = auth.cookie else {
+            uploadError = "请先登录"
+            return
+        }
+
+        do {
+            try await NeteaseAPI().deleteCloudSong(id: song.id, cookie: cookie)
+            songs.removeAll { $0.id == song.id }
+        } catch {
+            uploadError = error.localizedDescription
         }
     }
 

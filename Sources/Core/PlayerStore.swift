@@ -387,6 +387,21 @@ final class PlayerStore: ObservableObject {
         persistPlaybackState()
     }
 
+    /// 将歌曲插入到当前播放之后（已存在时先移除原位置）
+    func playNext(_ song: Song) {
+        if let index = queue.firstIndex(where: { $0.id == song.id }) {
+            guard index != currentIndex else { return }
+            queue.remove(at: index)
+            if index < currentIndex {
+                currentIndex -= 1
+            }
+        }
+
+        let target = min(currentIndex + 1, queue.count)
+        queue.insert(song, at: target)
+        persistPlaybackState()
+    }
+
     private func recordRecent(_ song: Song) {
         recentSongs.removeAll { $0.id == song.id }
         recentSongs.insert(song, at: 0)

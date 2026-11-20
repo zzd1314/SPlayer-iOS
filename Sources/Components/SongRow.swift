@@ -63,6 +63,12 @@ struct SongRow: View {
         }
         .contentShape(Rectangle())
         .contextMenu {
+            Button {
+                player.playNext(song)
+            } label: {
+                Label("下一首播放", systemImage: "text.line.first.and.arrowtriangle.forward")
+            }
+
             if auth.isLoggedIn {
                 Button {
                     showAddToPlaylist = true

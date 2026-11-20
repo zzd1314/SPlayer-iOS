@@ -231,4 +231,19 @@ extension NeteaseAPI {
             )
         }
     }
+
+    /// 删除云盘歌曲（/user/cloud/del）
+    func deleteCloudSong(id: Int, cookie: String) async throws {
+        let response: OperationResponse = try await get(
+            "/user/cloud/del",
+            query: ["id": String(id)],
+            cookie: cookie
+        )
+        guard response.code == 200 else {
+            throw APIError.business(
+                code: response.code,
+                message: response.message ?? response.msg ?? "删除云盘歌曲失败"
+            )
+        }
+    }
 }
