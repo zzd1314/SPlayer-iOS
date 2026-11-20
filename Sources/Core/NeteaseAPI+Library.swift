@@ -44,6 +44,13 @@ struct CloudMusicResponse: Decodable {
     let count: Int?
 }
 
+/// 云盘上传（/cloud）
+struct CloudUploadResponse: Decodable {
+    let code: Int
+    let message: String?
+    let msg: String?
+}
+
 extension NeteaseAPI {
     /// 用户歌单列表
     func userPlaylists(uid: Int, cookie: String?) async throws -> [Playlist] {
@@ -183,5 +190,45 @@ extension NeteaseAPI {
             throw APIError.business(code: response.code, message: "获取云盘失败")
         }
         return (response.data ?? []).compactMap(\.simpleSong)
+    }
+
+    /// 上传本地音频到云盘（/cloud）
+    func uploadCloudSong(fileURL: URL, cookie: String) async throws {
+        let accessed = fileURL.startAccessingSecurityScopedResource()
+        defer {
+            if accessed {
+                fileURL.stopAccessingSecurityScopedResource()
+            }
+        }
+
+        let data = try Data(contentsOf: fileURL)
+        let mimeType: String
+        switch fileURL.pathExtension.lowercased() {
+        case "flac":
+            mimeType = "audio/flac"
+        case "m4a":
+            mimeType = "audio/mp4"
+        case "wav":
+            mimeType = "audio/wav"
+        case "aac":
+            mimeType = "audio/aac"
+        default:
+            mimeType = "audio/mpeg"
+        }
+
+        let response: CloudUploadResponse = try await postMultipart(
+            "/cloud",
+            fileField: "songFile",
+            fileName: fileURL.lastPathComponent,
+            mimeType: mimeType,
+            fileData: data,
+            cookie: cookie
+        )
+        guard response.code == 200 else {
+            throw APIError.business(
+                code: response.code,
+                message: response.message ?? response.msg ?? "上传失败"
+            )
+        }
     }
 }

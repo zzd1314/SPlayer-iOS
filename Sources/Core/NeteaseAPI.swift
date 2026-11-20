@@ -65,6 +65,71 @@ struct NeteaseAPI {
             throw APIError.invalidResponse
         }
     }
+
+    /// POST multipart/form-data（文件上传）
+    func postMultipart<T: Decodable>(
+        _ path: String,
+        fields: [String: String] = [:],
+        fileField: String,
+        fileName: String,
+        mimeType: String,
+        fileData: Data,
+        cookie: String? = nil
+    ) async throws -> T {
+        guard var components = URLComponents(string: baseURL) else {
+            throw APIError.badURL
+        }
+        components.path = path
+        components.queryItems = [
+            URLQueryItem(name: "timestamp", value: String(Int(Date().timeIntervalSince1970 * 1000)))
+        ]
+        guard let url = components.url else { throw APIError.badURL }
+
+        let boundary = "Boundary-\(UUID().uuidString)"
+        var body = Data()
+        for (key, value) in fields {
+            body.append("--\(boundary)\r\n")
+            body.append("Content-Disposition: form-data; name=\"\(key)\"\r\n\r\n")
+            body.append("\(value)\r\n")
+        }
+        body.append("--\(boundary)\r\n")
+        body.append("Content-Disposition: form-data; name=\"\(fileField)\"; filename=\"\(fileName)\"\r\n")
+        body.append("Content-Type: \(mimeType)\r\n\r\n")
+        body.append(fileData)
+        body.append("\r\n--\(boundary)--\r\n")
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 180
+        request.setValue(
+            "multipart/form-data; boundary=\(boundary)",
+            forHTTPHeaderField: "Content-Type"
+        )
+        request.httpBody = body
+        if let cookie, !cookie.isEmpty {
+            request.setValue(cookie, forHTTPHeaderField: "Cookie")
+        }
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
+            throw APIError.http(http.statusCode)
+        }
+
+        do {
+            return try JSONDecoder().decode(T.self, from: data)
+        } catch {
+            if let envelope = try? JSONDecoder().decode(ErrorEnvelope.self, from: data) {
+                throw APIError.business(code: envelope.code, message: envelope.msg ?? envelope.message)
+            }
+            throw APIError.invalidResponse
+        }
+    }
+}
+
+private extension Data {
+    mutating func append(_ string: String) {
+        append(Data(string.utf8))
+    }
 }
 
 private struct ErrorEnvelope: Decodable {

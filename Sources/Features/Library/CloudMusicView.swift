@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// 我的云盘（仅展示可播放的云端歌曲）
 struct CloudMusicView: View {
@@ -9,6 +10,10 @@ struct CloudMusicView: View {
     @State private var isLoading = false
     @State private var loadedOnce = false
     @State private var errorText: String?
+    @State private var showImporter = false
+    @State private var isUploading = false
+    @State private var uploadError: String?
+    @State private var uploadSucceeded = false
 
     var body: some View {
         List {
@@ -26,6 +31,18 @@ struct CloudMusicView: View {
         .navigationTitle("我的云盘")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                if isUploading {
+                    ProgressView()
+                } else {
+                    Button {
+                        showImporter = true
+                    } label: {
+                        Label("上传到云盘", systemImage: "arrow.up.circle")
+                    }
+                    .disabled(auth.cookie == nil)
+                }
+            }
             if !songs.isEmpty {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
@@ -35,6 +52,32 @@ struct CloudMusicView: View {
                     }
                 }
             }
+        }
+        .fileImporter(
+            isPresented: $showImporter,
+            allowedContentTypes: [.audio],
+            allowsMultipleSelection: false
+        ) { result in
+            switch result {
+            case .success(let urls):
+                guard let url = urls.first else { return }
+                Task { await upload(url) }
+            case .failure(let error):
+                uploadError = error.localizedDescription
+            }
+        }
+        .alert("上传成功", isPresented: $uploadSucceeded) {
+            Button("好", role: .cancel) {}
+        } message: {
+            Text("歌曲已上传到云盘，正在刷新列表。")
+        }
+        .alert("上传失败", isPresented: Binding(
+            get: { uploadError != nil },
+            set: { if !$0 { uploadError = nil } }
+        )) {
+            Button("好", role: .cancel) {}
+        } message: {
+            Text(uploadError ?? "")
         }
         .refreshable {
             await load()
@@ -61,9 +104,27 @@ struct CloudMusicView: View {
                 ContentUnavailableView(
                     "云盘暂无歌曲",
                     systemImage: "cloud",
-                    description: Text("在网易云客户端上传音乐后会自动同步到这里")
+                    description: Text("点击右上角上传音乐，或在网易云客户端上传后同步到这里")
                 )
             }
+        }
+    }
+
+    private func upload(_ url: URL) async {
+        guard let cookie = auth.cookie else {
+            uploadError = "请先登录"
+            return
+        }
+        guard !isUploading else { return }
+        isUploading = true
+        defer { isUploading = false }
+
+        do {
+            try await NeteaseAPI().uploadCloudSong(fileURL: url, cookie: cookie)
+            await load()
+            uploadSucceeded = true
+        } catch {
+            uploadError = error.localizedDescription
         }
     }
 
