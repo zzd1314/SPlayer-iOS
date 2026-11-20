@@ -5,6 +5,29 @@ struct LikedSongsView: View {
     @EnvironmentObject private var auth: AuthStore
     @EnvironmentObject private var player: PlayerStore
 
+    /// 我喜欢的音乐排序方式
+    private enum SortOption: String, CaseIterable, Identifiable {
+        case defaultOrder
+        case name
+        case artist
+        case album
+        case duration
+
+        var id: String { rawValue }
+
+        var title: String {
+            switch self {
+            case .defaultOrder: return "默认（收藏时间）"
+            case .name: return "歌曲名"
+            case .artist: return "歌手"
+            case .album: return "专辑"
+            case .duration: return "时长"
+            }
+        }
+    }
+
+    @AppStorage("likedSongsSort") private var sortRaw = SortOption.defaultOrder.rawValue
+
     @State private var songs: [Song] = []
     @State private var isLoading = false
     @State private var loadedOnce = false
@@ -13,7 +36,7 @@ struct LikedSongsView: View {
     var body: some View {
         List {
             Section {
-                ForEach(Array(songs.enumerated()), id: \.element.id) { index, song in
+                ForEach(Array(sortedSongs.enumerated()), id: \.element.id) { index, song in
                     SongRow(index: index + 1, song: song, showsLikeButton: true)
                         .foregroundStyle(player.currentSong?.id == song.id ? Color.splayerAccent : Color.primary)
                         .contentShape(Rectangle())
@@ -42,8 +65,19 @@ struct LikedSongsView: View {
         .toolbar {
             if !songs.isEmpty {
                 ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        Picker("排序方式", selection: sortBinding) {
+                            ForEach(SortOption.allCases) { option in
+                                Text(option.title).tag(option)
+                            }
+                        }
+                    } label: {
+                        Label("排序", systemImage: "arrow.up.arrow.down")
+                    }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
                     Button {
-                        Task { await player.play(songs, startAt: 0) }
+                        Task { await player.play(sortedSongs, startAt: 0) }
                     } label: {
                         Label("播放全部", systemImage: "play.fill")
                     }
@@ -78,12 +112,53 @@ struct LikedSongsView: View {
         }
     }
 
+    private var sortBinding: Binding<SortOption> {
+        Binding(
+            get: { SortOption(rawValue: sortRaw) ?? .defaultOrder },
+            set: { sortRaw = $0.rawValue }
+        )
+    }
+
+    /// 按当前选择排序；默认保持接口返回的收藏时间顺序
+    private var sortedSongs: [Song] {
+        switch SortOption(rawValue: sortRaw) ?? .defaultOrder {
+        case .defaultOrder:
+            return songs
+        case .name:
+            return songs.sorted {
+                $0.name.localizedStandardCompare($1.name) == .orderedAscending
+            }
+        case .artist:
+            return songs.sorted { lhs, rhs in
+                let l = lhs.artists.first?.name ?? ""
+                let r = rhs.artists.first?.name ?? ""
+                let result = l.localizedStandardCompare(r)
+                if result == .orderedSame {
+                    return lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
+                }
+                return result == .orderedAscending
+            }
+        case .album:
+            return songs.sorted { lhs, rhs in
+                let l = lhs.albumName ?? ""
+                let r = rhs.albumName ?? ""
+                let result = l.localizedStandardCompare(r)
+                if result == .orderedSame {
+                    return lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
+                }
+                return result == .orderedAscending
+            }
+        case .duration:
+            return songs.sorted { $0.duration < $1.duration }
+        }
+    }
+
     private func play(_ song: Song) {
         Task {
             if AppSettings.songListPlayBehavior == "current" {
                 await player.play([song], startAt: 0)
             } else {
-                await player.play(song: song, in: songs)
+                await player.play(song: song, in: sortedSongs)
             }
         }
     }
