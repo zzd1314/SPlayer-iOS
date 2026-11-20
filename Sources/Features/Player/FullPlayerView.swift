@@ -86,11 +86,18 @@ struct FullPlayerView: View {
                 }
 
                 if let error = player.errorText {
-                    Text(error)
-                        .font(.footnote)
-                        .foregroundStyle(.red)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 32)
+                    VStack(spacing: 8) {
+                        Text(error)
+                            .font(.footnote)
+                            .foregroundStyle(.red)
+                            .multilineTextAlignment(.center)
+                        Button("重试") {
+                            Task { await player.retry() }
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                    }
+                    .padding(.horizontal, 32)
                 }
             } else {
                 Text("暂无播放")

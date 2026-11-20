@@ -2,6 +2,7 @@ import SwiftUI
 
 /// 根视图：未登录显示扫码登录，已登录进入主界面
 struct RootView: View {
+    @Environment(\.scenePhase) private var scenePhase
     @StateObject private var auth = AuthStore()
     @StateObject private var player = PlayerStore()
 
@@ -22,6 +23,11 @@ struct RootView: View {
         }
         .onChange(of: auth.cookie) { _, newValue in
             player.cookie = newValue
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active {
+                Task { await auth.refreshProfile() }
+            }
         }
     }
 }

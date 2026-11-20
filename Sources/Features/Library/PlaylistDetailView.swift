@@ -9,6 +9,7 @@ struct PlaylistDetailView: View {
 
     @State private var songs: [Song] = []
     @State private var isLoading = false
+    @State private var loadedOnce = false
     @State private var errorText: String?
 
     var body: some View {
@@ -26,6 +27,14 @@ struct PlaylistDetailView: View {
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(player.currentSong?.id == song.id ? Color.splayerAccent : Color.primary)
+                }
+
+                if songs.isEmpty, loadedOnce, errorText == nil {
+                    Text("暂无歌曲")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 24)
                 }
             }
         }
@@ -79,7 +88,10 @@ struct PlaylistDetailView: View {
         guard !isLoading else { return }
         isLoading = true
         errorText = nil
-        defer { isLoading = false }
+        defer {
+            isLoading = false
+            loadedOnce = true
+        }
 
         do {
             songs = try await NeteaseAPI().playlistTracks(id: playlist.id, cookie: auth.cookie)

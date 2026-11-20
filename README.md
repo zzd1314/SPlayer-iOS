@@ -14,7 +14,7 @@ SPlayer-Next（[SPlayer-Dev/SPlayer-Next](https://github.com/SPlayer-Dev/SPlayer
 - [x] M3 歌单列表 / 详情 / 搜索
 - [x] M4 播放 + 本地缓存 + 后台/锁屏控制
 - [x] M5 歌词滚动 + 设置页
-- [ ] M6 预载下一曲 / 错误态打磨
+- [x] M6 预载下一曲 / 错误态打磨
 
 ## 构建
 

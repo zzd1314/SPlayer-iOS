@@ -14,9 +14,9 @@ struct MiniPlayer: View {
                     Text(song.name)
                         .font(.subheadline)
                         .lineLimit(1)
-                    Text(song.artistText)
+                    Text(player.errorText ?? song.artistText)
                         .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(player.errorText == nil ? Color.secondary : Color.red)
                         .lineLimit(1)
                 }
 

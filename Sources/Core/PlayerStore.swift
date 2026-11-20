@@ -20,7 +20,10 @@ final class PlayerStore: ObservableObject {
     private let player = AVPlayer()
     private var endObserver: NSObjectProtocol?
     private var interruptionObserver: NSObjectProtocol?
+    private var failureObserver: NSObjectProtocol?
     private var timeObserver: Any?
+    /// 正在预载/缓存中的歌曲，避免重复下载
+    private var preloadingSongs: Set<Int> = []
 
     init() {
         configureAudioSession()
@@ -42,6 +45,9 @@ final class PlayerStore: ObservableObject {
         }
         if let interruptionObserver {
             NotificationCenter.default.removeObserver(interruptionObserver)
+        }
+        if let failureObserver {
+            NotificationCenter.default.removeObserver(failureObserver)
         }
         if let timeObserver {
             player.removeTimeObserver(timeObserver)
@@ -132,11 +138,12 @@ final class PlayerStore: ObservableObject {
             }
 
             player.replaceCurrentItem(with: item)
-            observeEnd(of: item)
+            observeItem(item)
             player.play()
             isPlaying = true
             isLoading = false
             updateNowPlaying()
+            preloadNext()
         } catch {
             isLoading = false
             isPlaying = false
@@ -144,17 +151,49 @@ final class PlayerStore: ObservableObject {
         }
     }
 
-    private func cacheInBackground(url: URL, songId: Int) {
-        Task.detached(priority: .utility) {
-            guard let (tmpURL, response) = try? await URLSession.shared.download(from: url) else { return }
-            if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
-                return
-            }
-            AudioCache.store(tmpURL: tmpURL, songId: songId)
+    /// 重试当前歌曲
+    func retry() async {
+        guard currentSong != nil else { return }
+        await loadCurrent()
+    }
+
+    /// 预载下一曲：提前解析地址并写入本地缓存
+    private func preloadNext() {
+        let nextIndex = currentIndex + 1
+        guard queue.indices.contains(nextIndex) else { return }
+        let song = queue[nextIndex]
+        guard AudioCache.cachedURL(songId: song.id) == nil,
+              !preloadingSongs.contains(song.id)
+        else { return }
+
+        preloadingSongs.insert(song.id)
+        let cookie = self.cookie
+        Task {
+            defer { preloadingSongs.remove(song.id) }
+            guard let url = try? await NeteaseAPI().songURL(
+                id: song.id,
+                level: AppSettings.audioLevel,
+                cookie: cookie
+            ) else { return }
+            await download(url: url, songId: song.id)
         }
     }
 
-    private func observeEnd(of item: AVPlayerItem) {
+    private func cacheInBackground(url: URL, songId: Int) {
+        Task {
+            await download(url: url, songId: songId)
+        }
+    }
+
+    private func download(url: URL, songId: Int) async {
+        guard let (tmpURL, response) = try? await URLSession.shared.download(from: url) else { return }
+        if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
+            return
+        }
+        AudioCache.store(tmpURL: tmpURL, songId: songId)
+    }
+
+    private func observeItem(_ item: AVPlayerItem) {
         endObserver = NotificationCenter.default.addObserver(
             forName: .AVPlayerItemDidPlayToEndTime,
             object: item,
@@ -164,12 +203,26 @@ final class PlayerStore: ObservableObject {
                 await self?.next()
             }
         }
+        failureObserver = NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemFailedToPlayToEndTime,
+            object: item,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.isPlaying = false
+                self?.errorText = "播放中断，请检查网络后重试"
+            }
+        }
     }
 
     private func removeEndObserver() {
         if let endObserver {
             NotificationCenter.default.removeObserver(endObserver)
             self.endObserver = nil
+        }
+        if let failureObserver {
+            NotificationCenter.default.removeObserver(failureObserver)
+            self.failureObserver = nil
         }
     }
 

@@ -73,7 +73,7 @@ struct SettingsView: View {
 
                 Section("关于") {
                     LabeledContent("版本", value: appVersion)
-                    LabeledContent("阶段", value: "M5 歌词与设置")
+                    LabeledContent("阶段", value: "M6 完成")
                 }
             }
             .navigationTitle("设置")
