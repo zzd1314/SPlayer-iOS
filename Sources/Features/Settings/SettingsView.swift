@@ -866,22 +866,14 @@ private struct AboutSettingsView: View {
                     }
 
                     Spacer(minLength: 0)
-
-                    VStack(alignment: .trailing, spacing: 6) {
-                        Button("检查更新") {
-                            openURL(releasesURL)
-                        }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-
-                        Button(copied ? "已复制" : "复制信息") {
-                            copyEnvironment()
-                        }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                    }
                 }
                 .padding(.vertical, 6)
+
+                Button {
+                    openURL(releasesURL)
+                } label: {
+                    Label("检查更新", systemImage: "arrow.triangle.2.circlepath")
+                }
             } header: {
                 Text("关于软件")
             }
