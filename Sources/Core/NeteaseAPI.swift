@@ -43,6 +43,23 @@ struct NeteaseAPI {
         query: [String: String] = [:],
         cookie: String? = nil
     ) async throws -> T {
+        let data = try await getData(path, query: query, cookie: cookie)
+        do {
+            return try JSONDecoder().decode(T.self, from: data)
+        } catch {
+            if let envelope = try? JSONDecoder().decode(ErrorEnvelope.self, from: data) {
+                throw APIError.business(code: envelope.code ?? -1, message: envelope.msg ?? envelope.message)
+            }
+            throw APIError.invalidResponse
+        }
+    }
+
+    /// GET 原始响应体，供需要宽松解析的接口使用（个别异常条目不至于拖垮整段解码）
+    func getData(
+        _ path: String,
+        query: [String: String] = [:],
+        cookie: String? = nil
+    ) async throws -> Data {
         guard var components = URLComponents(string: baseURL) else {
             throw APIError.badURL
         }
@@ -64,15 +81,7 @@ struct NeteaseAPI {
         if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
             throw Self.serverError(from: data, status: http.statusCode)
         }
-
-        do {
-            return try JSONDecoder().decode(T.self, from: data)
-        } catch {
-            if let envelope = try? JSONDecoder().decode(ErrorEnvelope.self, from: data) {
-                throw APIError.business(code: envelope.code ?? -1, message: envelope.msg ?? envelope.message)
-            }
-            throw APIError.invalidResponse
-        }
+        return data
     }
 
     /// POST 表单请求：登录、验证码等含凭据的接口，避免把参数放在 URL 上

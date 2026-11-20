@@ -46,20 +46,6 @@ struct LikeListResponse: Decodable {
     let ids: [Int]?
 }
 
-/// 歌单详情（/playlist/detail）：tracks 为桌面端展示顺序，trackIds 用于补齐未返回的曲目
-struct LikedPlaylistDetailResponse: Decodable {
-    struct PlaylistInfo: Decodable {
-        struct TrackRef: Decodable {
-            let id: Int
-        }
-        let trackIds: [TrackRef]?
-        let tracks: [Song]?
-    }
-
-    let code: Int
-    let playlist: PlaylistInfo?
-}
-
 struct SongDetailResponse: Decodable {
     let code: Int
     let songs: [Song]?
@@ -181,21 +167,45 @@ extension NeteaseAPI {
         return response.ids ?? []
     }
 
-    /// 我喜欢的音乐歌单详情
+    /// 我喜欢的音乐曲目顺序（/playlist/detail）
     ///
-    /// `tracks` 的顺序与桌面端列表一致（最新收藏在前），`trackIds` 用于补充 `tracks` 未覆盖的曲目。
+    /// 桌面端直接按 `tracks` 数组顺序展示，`trackIds` 用于补齐 `tracks` 未覆盖的曲目。
+    /// 这里只取 id、不做整段模型解码：歌单里个别异常条目（null、字段缺失等）不会导致
+    /// 整个响应解析失败，从而避免静默退回旧的 likelist 顺序。
     /// `uid` 同时是「我喜欢的音乐」这个特殊歌单的 id。
-    func likedPlaylist(uid: Int, cookie: String) async throws -> (tracks: [Song], trackIds: [Int]) {
-        let response: LikedPlaylistDetailResponse = try await get(
+    func likedPlaylistTrackIDs(uid: Int, cookie: String) async throws -> [Int] {
+        let data = try await getData(
             "/playlist/detail",
             query: ["id": String(uid)],
             cookie: cookie
         )
-        guard response.code == 200 else { return ([], []) }
-        return (
-            response.playlist?.tracks ?? [],
-            (response.playlist?.trackIds ?? []).map(\.id)
-        )
+        guard
+            let object = try? JSONSerialization.jsonObject(with: data),
+            let root = object as? [String: Any],
+            let playlist = root["playlist"] as? [String: Any]
+        else {
+            throw APIError.invalidResponse
+        }
+
+        var ids: [Int] = []
+        for item in playlist["tracks"] as? [Any] ?? [] {
+            if let dict = item as? [String: Any], let id = APIID.int(dict["id"]) {
+                ids.append(id)
+            }
+        }
+        let trackSet = Set(ids)
+        for item in playlist["trackIds"] as? [Any] ?? [] {
+            let id: Int?
+            if let dict = item as? [String: Any] {
+                id = APIID.int(dict["id"])
+            } else {
+                id = APIID.int(item)
+            }
+            if let id, !trackSet.contains(id) {
+                ids.append(id)
+            }
+        }
+        return ids
     }
 
     /// 批量获取歌曲详情（每批最多 200 个 id）
@@ -312,6 +322,18 @@ extension NeteaseAPI {
                 code: response.code,
                 message: response.message ?? response.msg ?? "收藏操作失败"
             )
+        }
+    }
+}
+
+/// 宽松读取 JSON 里的整数：接口中的 id 有时是数字、有时是字符串
+private enum APIID {
+    static func int(_ value: Any?) -> Int? {
+        guard let value else { return nil }
+        switch value {
+        case let number as NSNumber: return number.intValue
+        case let string as String: return Int(string)
+        default: return nil
         }
     }
 }

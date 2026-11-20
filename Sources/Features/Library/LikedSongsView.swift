@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// 我喜欢的音乐：/likelist + /song/detail
+/// 我喜欢的音乐：/playlist/detail 顺序 + /song/detail
 struct LikedSongsView: View {
     @EnvironmentObject private var auth: AuthStore
     @EnvironmentObject private var player: PlayerStore
@@ -32,6 +32,8 @@ struct LikedSongsView: View {
     @State private var isLoading = false
     @State private var loadedOnce = false
     @State private var errorText: String?
+    /// 歌单详情不可用、退回 likelist 顺序时为 true
+    @State private var usingFallbackOrder = false
 
     var body: some View {
         List {
@@ -51,6 +53,14 @@ struct LikedSongsView: View {
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 24)
+                }
+
+                if usingFallbackOrder, !songs.isEmpty {
+                    Text("未获取到歌单顺序，当前为备用排序")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 8)
                 }
             } header: {
                 if !songs.isEmpty {
@@ -183,31 +193,25 @@ struct LikedSongsView: View {
             let api = NeteaseAPI()
             let allIds = try await api.likeList(uid: uid, cookie: cookie)
             let allSet = Set(allIds)
-            var seen = Set<Int>()
-            var result: [Song] = []
 
-            // 与桌面端一致：使用歌单详情 tracks 的数组顺序（最新收藏在前）
-            let detail: (tracks: [Song], trackIds: [Int]) =
-                (try? await api.likedPlaylist(uid: uid, cookie: cookie)) ?? (tracks: [], trackIds: [])
-            for song in detail.tracks where allSet.contains(song.id) {
-                if seen.insert(song.id).inserted { result.append(song) }
-            }
-            // tracks 未覆盖的曲目（超过单次返回上限时）按 trackIds 顺序补齐
-            let missingIds = detail.trackIds.filter { allSet.contains($0) && !seen.contains($0) }
-            if !missingIds.isEmpty {
-                let fetched = try await api.songDetails(ids: missingIds, cookie: cookie)
-                let byId = Dictionary(fetched.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-                for id in missingIds {
-                    if let song = byId[id], seen.insert(id).inserted { result.append(song) }
-                }
+            // 与桌面端一致：按歌单详情返回的曲目数组顺序展示（最新收藏在前）
+            var orderedIds: [Int] = []
+            var seen = Set<Int>()
+            let detailIds = (try? await api.likedPlaylistTrackIDs(uid: uid, cookie: cookie)) ?? []
+            for id in detailIds where allSet.contains(id) {
+                if seen.insert(id).inserted { orderedIds.append(id) }
             }
             // 兜底：歌单详情不可用时回退到 likelist 顺序
-            if result.isEmpty {
-                let fetched = try await api.songDetails(ids: allIds, cookie: cookie)
-                let byId = Dictionary(fetched.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-                result = allIds.compactMap { byId[$0] }
+            if orderedIds.isEmpty {
+                orderedIds = allIds
+                usingFallbackOrder = true
+            } else {
+                usingFallbackOrder = false
             }
-            songs = result
+
+            let fetched = try await api.songDetails(ids: orderedIds, cookie: cookie)
+            let byId = Dictionary(fetched.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+            songs = orderedIds.compactMap { byId[$0] }
         } catch {
             errorText = error.localizedDescription
         }
