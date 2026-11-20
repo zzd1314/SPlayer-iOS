@@ -72,7 +72,7 @@ final class PlayerStore: ObservableObject {
         guard !queue.isEmpty else { return }
         let elapsed = CMTimeGetSeconds(player.currentTime())
         if elapsed > 3 || currentIndex == 0 {
-            player.seek(to: .zero)
+            _ = await player.seek(to: .zero)
             updateNowPlaying()
             return
         }
