@@ -11,7 +11,7 @@ struct MiniPlayer: View {
     var body: some View {
         if let song = player.currentSong {
             HStack(spacing: 10) {
-                CoverImage(urlString: song.albumPicUrl, size: 40, cornerRadius: 8)
+                CoverImage(urlString: player.currentCoverURL ?? song.albumPicUrl, size: 40, cornerRadius: 8)
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(song.name)

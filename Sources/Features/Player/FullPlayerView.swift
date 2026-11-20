@@ -161,7 +161,7 @@ struct FullPlayerView: View {
                         .blur(radius: 42)
                         .overlay(Color.black.opacity(0.45))
 
-                    CoverImage(urlString: song.albumPicUrl, size: side, cornerRadius: 18)
+                    CoverImage(urlString: player.currentCoverURL ?? song.albumPicUrl, size: side, cornerRadius: 18)
                         .shadow(color: .black.opacity(0.5), radius: 30, y: 16)
                 } else {
                     coverImage(song: song)
@@ -190,7 +190,7 @@ struct FullPlayerView: View {
 
     @ViewBuilder
     private func coverImage(song: Song) -> some View {
-        if let urlString = song.albumPicUrl, let url = URL(string: urlString) {
+        if let urlString = player.currentCoverURL ?? song.albumPicUrl, let url = URL(string: urlString) {
             AsyncImage(url: url) { phase in
                 if let image = phase.image {
                     image
@@ -413,7 +413,7 @@ struct FullPlayerView: View {
             } else {
                 GeometryReader { geo in
                     let side = min(min(geo.size.width - 56, 330), max(geo.size.height - 8, 160))
-                    CoverImage(urlString: song.albumPicUrl, size: side, cornerRadius: 20)
+                    CoverImage(urlString: player.currentCoverURL ?? song.albumPicUrl, size: side, cornerRadius: 20)
                         .shadow(color: .black.opacity(0.45), radius: 26, y: 14)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }

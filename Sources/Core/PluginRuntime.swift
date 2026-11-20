@@ -72,6 +72,28 @@ struct PluginMenu: Codable, Hashable, Identifiable {
 struct PluginRegistration {
     let settings: [PluginSetting]
     let menus: [PluginMenu]
+    /// 插件声明的宿主音源能力，键为宿主音源标识（当前仅 wy）
+    let sources: [String: PluginSource]
+}
+
+/// `splayer.register({ sources: { wy: { actions: [...] } } })` 声明的单个音源能力
+struct PluginSource: Codable, Hashable {
+    let name: String?
+    let actions: [String]
+    let qualities: [String]
+
+    init?(dictionary: [String: Any]) {
+        let rawActions = dictionary["actions"]
+        if let list = rawActions as? [String] {
+            actions = list
+        } else if let map = rawActions as? [String: Any] {
+            actions = Array(map.keys)
+        } else {
+            actions = []
+        }
+        qualities = (dictionary["qualities"] as? [String]) ?? []
+        name = dictionary["name"] as? String
+    }
 }
 
 // MARK: - JavaScript 运行时
@@ -83,10 +105,18 @@ final class PluginRuntime {
 
     private var contexts: [String: JSContext] = [:]
     private var timers: [String: [Int: PluginTimer]] = [:]
+    private var pendingHostCalls: [Int: HostCallWaiter] = [:]
+    private var hostCallSequence = 0
 
     private struct PluginTimer {
         let timer: Timer
         let repeats: Bool
+    }
+
+    private struct HostCallWaiter {
+        let pluginID: String
+        let continuation: CheckedContinuation<Any?, Error>
+        let timeoutTask: Task<Void, Never>
     }
 
     /// 加载（或重新加载）插件脚本
@@ -136,6 +166,69 @@ final class PluginRuntime {
         contexts.removeValue(forKey: pluginID)
         timers[pluginID]?.values.forEach { $0.timer.invalidate() }
         timers[pluginID] = nil
+
+        let pending = pendingHostCalls.filter { $0.value.pluginID == pluginID }.map(\.key)
+        for callID in pending {
+            finishHostCall(callID: callID, result: .failure(PluginError.runtimeUnavailable))
+        }
+    }
+
+    func isLoaded(pluginID: String) -> Bool {
+        contexts[pluginID] != nil
+    }
+
+    // MARK: 音源钩子调用（Swift → JS）
+
+    /// 调用插件注册的音源钩子（musicUrl / musicLyric / musicPic / musicSearch）
+    func callSource(
+        pluginID: String,
+        action: String,
+        payload: [String: Any],
+        timeout: TimeInterval = 20
+    ) async throws -> Any? {
+        guard let context = contexts[pluginID] else { throw PluginError.runtimeUnavailable }
+
+        hostCallSequence += 1
+        let callID = hostCallSequence
+        let payloadJSON = Self.encode(payload)
+
+        return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Any?, Error>) in
+            let timeoutTask = Task { @MainActor [weak self] in
+                try? await Task.sleep(nanoseconds: UInt64(max(timeout, 1) * 1_000_000_000))
+                guard !Task.isCancelled else { return }
+                self?.finishHostCall(
+                    callID: callID,
+                    result: .failure(PluginError.runtimeTimeout(action))
+                )
+            }
+            pendingHostCalls[callID] = HostCallWaiter(
+                pluginID: pluginID,
+                continuation: continuation,
+                timeoutTask: timeoutTask
+            )
+
+            guard let function = context.objectForKeyedSubscript("__hostCall"),
+                  !function.isUndefined,
+                  !function.isNull else {
+                finishHostCall(callID: callID, result: .failure(PluginError.runtimeUnavailable))
+                return
+            }
+
+            _ = function.call(withArguments: [callID, action, payloadJSON])
+            if let exception = context.exception {
+                context.exception = nil
+                finishHostCall(
+                    callID: callID,
+                    result: .failure(PluginError.runtimeCallFailed(exception.toString() ?? "插件脚本异常"))
+                )
+            }
+        }
+    }
+
+    private func finishHostCall(callID: Int, result: Result<Any?, Error>) {
+        guard let waiter = pendingHostCalls.removeValue(forKey: callID) else { return }
+        waiter.timeoutTask.cancel()
+        waiter.continuation.resume(with: result)
     }
 
     // MARK: 事件分发
@@ -253,6 +346,19 @@ final class PluginRuntime {
             Self.digest(algorithm: algorithm, input: input, key: key)
         }
 
+        let hostResolveBlock: @convention(block) (Double, Bool, String, String) -> Void = {
+            [weak self] callID, ok, json, errorText in
+            MainActor.assumeIsolated {
+                let result: Result<Any?, Error>
+                if ok {
+                    result = .success(Self.decode(json))
+                } else {
+                    result = .failure(PluginError.runtimeCallFailed(errorText.isEmpty ? "插件脚本异常" : errorText))
+                }
+                self?.finishHostCall(callID: Int(callID), result: result)
+            }
+        }
+
         context.setObject(registerBlock, forKeyedSubscript: "__nativeRegister" as NSString)
         context.setObject(logBlock, forKeyedSubscript: "__nativeLog" as NSString)
         context.setObject(storageGetBlock, forKeyedSubscript: "__nativeStorageGet" as NSString)
@@ -267,6 +373,7 @@ final class PluginRuntime {
         context.setObject(setIntervalBlock, forKeyedSubscript: "__nativeSetInterval" as NSString)
         context.setObject(clearTimerBlock, forKeyedSubscript: "__nativeClearTimer" as NSString)
         context.setObject(cryptoBlock, forKeyedSubscript: "__nativeCrypto" as NSString)
+        context.setObject(hostResolveBlock, forKeyedSubscript: "__nativeHostResolve" as NSString)
     }
 
     private func handleRegister(pluginID: String, json: String) {
@@ -278,7 +385,9 @@ final class PluginRuntime {
             guard let id = item["id"] as? String, let label = item["label"] as? String else { return nil }
             return PluginMenu(id: id, label: label)
         }
-        manager?.applyRegistration(pluginID: pluginID, settings: settings, menus: menus)
+        let sources = (object["sources"] as? [String: Any] ?? [:])
+            .compactMapValues { PluginSource(dictionary: $0) }
+        manager?.applyRegistration(pluginID: pluginID, settings: settings, menus: menus, sources: sources)
     }
 
     // MARK: 定时器
@@ -434,6 +543,11 @@ final class PluginRuntime {
               let data = try? JSONSerialization.data(withJSONObject: payload),
               let text = String(data: data, encoding: .utf8) else { return "null" }
         return text
+    }
+
+    private static func decode(_ json: String) -> Any? {
+        guard !json.isEmpty, let data = json.data(using: .utf8) else { return nil }
+        return try? JSONSerialization.jsonObject(with: data, options: .fragmentsAllowed)
     }
 
     // MARK: 摘要工具
@@ -600,6 +714,36 @@ final class PluginRuntime {
         emit("setting", key, valueJson ? parseJSON(valueJson) : null);
       };
 
+      global.__hostCall = function (id, action, payloadJson) {
+        var payload = payloadJson ? parseJSON(payloadJson) : null;
+        var callbacks = listeners["app:" + String(action)] || [];
+        var handler = callbacks.length ? callbacks[callbacks.length - 1] : null;
+        if (typeof handler !== "function") {
+          __nativeHostResolve(id, false, "", "插件未实现 " + action);
+          return;
+        }
+
+        var value;
+        try {
+          value = handler(payload);
+        } catch (error) {
+          __nativeHostResolve(id, false, "", String(error && error.message ? error.message : error));
+          return;
+        }
+
+        Promise.resolve(value).then(function (result) {
+          var json = "null";
+          try {
+            json = JSON.stringify(result === undefined ? null : result);
+          } catch (error) {
+            json = "null";
+          }
+          __nativeHostResolve(id, true, json, "");
+        }, function (error) {
+          __nativeHostResolve(id, false, "", String(error && error.message ? error.message : error));
+        });
+      };
+
       var pendingRequests = {};
       var requestSequence = 0;
 
@@ -671,13 +815,18 @@ final class PluginRuntime {
             eventNames = options.events.map(String);
           } else if (options.events && typeof options.events === "object") {
             eventNames = Object.keys(options.events);
+            eventNames.forEach(function (name) {
+              if (typeof options.events[name] === "function") {
+                addListener("app", name, options.events[name]);
+              }
+            });
           }
 
           var payload = {
             settings: Array.isArray(options.settings) ? options.settings : [],
             menus: Array.isArray(options.menus) ? options.menus : [],
             events: eventNames,
-            sources: options.sources && typeof options.sources === "object" ? Object.keys(options.sources) : []
+            sources: options.sources && typeof options.sources === "object" ? options.sources : {}
           };
 
           try {

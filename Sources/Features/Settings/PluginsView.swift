@@ -43,7 +43,7 @@ struct PluginsView: View {
                     marketSection
                 }
 
-                Text("iOS 版支持插件导入、启用、配置、网络请求与播放事件（trackChange / lyricChange / lineChange）；音源与歌词覆盖类钩子暂未接入播放链路。")
+                Text("iOS 版支持插件导入、启用、配置、网络请求与播放事件（trackChange / lyricChange / lineChange）；声明了网易云音源能力的插件可在播放地址、歌词、封面缺失时兜底，并在搜索无结果时补充曲库结果。")
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
                     .padding(.top, 2)

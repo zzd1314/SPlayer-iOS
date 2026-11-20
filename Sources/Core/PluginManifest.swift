@@ -334,6 +334,9 @@ enum PluginError: LocalizedError {
     case noDownloadURL
     case noUpdateURL
     case pluginNotFound
+    case runtimeUnavailable
+    case runtimeTimeout(String)
+    case runtimeCallFailed(String)
 
     var errorDescription: String? {
         switch self {
@@ -355,6 +358,12 @@ enum PluginError: LocalizedError {
             return "该插件未声明 @updateUrl，无法检查更新"
         case .pluginNotFound:
             return "插件不存在或已被卸载"
+        case .runtimeUnavailable:
+            return "插件运行时尚未就绪"
+        case .runtimeTimeout(let action):
+            return "插件处理 \(action) 超时"
+        case .runtimeCallFailed(let message):
+            return "插件调用失败：\(message)"
         }
     }
 }

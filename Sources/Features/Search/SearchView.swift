@@ -369,6 +369,9 @@ struct SearchView: View {
             switch current {
             case .songs:
                 songs = try await api.searchSongs(keywords: keyword, cookie: cookie)
+                if songs.isEmpty {
+                    songs = await PluginManager.shared.searchSongsViaPlugins(keyword: keyword)
+                }
             case .artists:
                 artists = try await api.searchArtists(keywords: keyword, cookie: cookie)
             case .albums:
@@ -386,6 +389,16 @@ struct SearchView: View {
             case .playlists: playlists = []
             case .mvs: mvs = []
             }
+
+            // 官方搜索失败时，尝试由音源插件补充曲库结果
+            if current == .songs {
+                let fallback = await PluginManager.shared.searchSongsViaPlugins(keyword: keyword)
+                if !fallback.isEmpty {
+                    songs = fallback
+                    return
+                }
+            }
+
             if current == category {
                 errorText = error.localizedDescription
             }

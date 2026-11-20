@@ -80,7 +80,7 @@ struct PlayerBar: View {
 
     private func trackInfo(song: Song) -> some View {
         HStack(spacing: 10) {
-            CoverImage(urlString: song.albumPicUrl, size: 40, cornerRadius: 7)
+            CoverImage(urlString: player.currentCoverURL ?? song.albumPicUrl, size: 40, cornerRadius: 7)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(song.name)
@@ -254,7 +254,7 @@ struct PlayerBar: View {
 
     private func compactBar(song: Song) -> some View {
         HStack(spacing: 10) {
-            CoverImage(urlString: song.albumPicUrl, size: 40, cornerRadius: 7)
+            CoverImage(urlString: player.currentCoverURL ?? song.albumPicUrl, size: 40, cornerRadius: 7)
 
             VStack(alignment: .leading, spacing: 1) {
                 Text(song.name)

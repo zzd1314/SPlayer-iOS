@@ -22,6 +22,8 @@ final class PlayerStore: ObservableObject {
     @Published private(set) var lyricError: String?
     /// 封面主色（用于歌词高亮 / 主题跟随封面）
     @Published private(set) var coverAccent: Color?
+    /// 当前歌曲封面地址（官方缺失时可由音源插件补充）
+    @Published private(set) var currentCoverURL: String?
     @Published private(set) var repeatMode: RepeatMode = .off
     @Published private(set) var isShuffleEnabled = false
     /// 最近播放（最新在前，最多 100 首）
@@ -445,8 +447,10 @@ final class PlayerStore: ObservableObject {
         lyricLines = []
         lyricError = nil
         coverAccent = nil
+        currentCoverURL = song.albumPicUrl
         removeEndObserver()
         loadLyrics(for: song)
+        resolveCoverIfNeeded(for: song)
         persistPlaybackState()
         syncNowPlaying()
 
@@ -459,11 +463,7 @@ final class PlayerStore: ObservableObject {
             } else if let streamURL = MediaServerRegistry.streamURL(for: song.id) {
                 item = AVPlayerItem(url: streamURL)
             } else {
-                let remoteURL = try await NeteaseAPI().songURL(
-                    id: song.id,
-                    level: AppSettings.audioLevel,
-                    cookie: cookie
-                )
+                let remoteURL = try await resolveStreamURL(for: song)
 
                 if let cachedURL = AudioCache.cachedURL(songId: song.id) {
                     item = AVPlayerItem(url: cachedURL)
@@ -500,6 +500,35 @@ final class PlayerStore: ObservableObject {
         }
     }
 
+    /// 解析播放地址：官方接口失败（VIP / 无版权 / 上游故障）时回退到音源插件
+    private func resolveStreamURL(for song: Song) async throws -> URL {
+        do {
+            return try await NeteaseAPI().songURL(
+                id: song.id,
+                level: AppSettings.audioLevel,
+                cookie: cookie
+            )
+        } catch {
+            guard let fallback = await PluginManager.shared.resolvePlaybackURL(for: song) else {
+                throw error
+            }
+            return fallback
+        }
+    }
+
+    /// 官方封面缺失时异步向音源插件补图
+    private func resolveCoverIfNeeded(for song: Song) {
+        guard song.id > 0, song.albumPicUrl?.isEmpty != false else { return }
+        Task { [weak self] in
+            guard let self,
+                  let cover = await PluginManager.shared.resolveCoverURL(for: song),
+                  self.currentSong?.id == song.id else { return }
+            self.currentCoverURL = cover
+            self.updateNowPlaying()
+            self.syncNowPlaying()
+        }
+    }
+
     private func loadLyrics(for song: Song) {
         lyricTask?.cancel()
         guard song.id > 0 else {
@@ -513,16 +542,30 @@ final class PlayerStore: ObservableObject {
 
         lyricTask = Task { [weak self] in
             guard let self else { return }
+            var lines: [LyricLine] = []
+            var message: String?
             do {
                 let bundle = try await NeteaseAPI().lyricBundle(id: song.id, cookie: cookie)
-                guard !Task.isCancelled, self.currentSong?.id == song.id else { return }
-                self.lyricLines = bundle.lines
-                self.lyricError = bundle.lines.isEmpty ? "暂无歌词" : nil
+                lines = bundle.lines
             } catch {
-                guard !Task.isCancelled, self.currentSong?.id == song.id else { return }
-                self.lyricLines = []
-                self.lyricError = error.localizedDescription
+                message = error.localizedDescription
             }
+
+            // 官方歌词缺失时，尝试由音源插件提供（LRC / 逐字）
+            if lines.isEmpty,
+               let pluginLyric = await PluginManager.shared.resolveLyric(for: song),
+               !Task.isCancelled {
+                lines = LRC.parse(
+                    pluginLyric.text,
+                    translation: nil,
+                    yrc: pluginLyric.wordText
+                ).lines
+                if !lines.isEmpty { message = nil }
+            }
+
+            guard !Task.isCancelled, self.currentSong?.id == song.id else { return }
+            self.lyricLines = lines
+            self.lyricError = lines.isEmpty ? (message ?? "暂无歌词") : nil
             self.isLoadingLyrics = false
             self.syncNowPlaying()
         }
@@ -539,14 +582,9 @@ final class PlayerStore: ObservableObject {
         else { return }
 
         preloadingSongs.insert(song.id)
-        let cookie = self.cookie
         Task { [weak self] in
             defer { self?.preloadingSongs.remove(song.id) }
-            guard let url = try? await NeteaseAPI().songURL(
-                id: song.id,
-                level: AppSettings.audioLevel,
-                cookie: cookie
-            ) else { return }
+            guard let url = try? await self?.resolveStreamURL(for: song) else { return }
             await self?.download(url: url, songId: song.id)
         }
     }
@@ -738,7 +776,7 @@ final class PlayerStore: ObservableObject {
         }
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
 
-        guard let pic = song.albumPicUrl, let url = URL(string: pic) else { return }
+        guard let pic = currentCoverURL ?? song.albumPicUrl, let url = URL(string: pic) else { return }
         Task { [weak self] in
             guard let (data, _) = try? await URLSession.shared.data(from: url),
                   let image = UIImage(data: data)
@@ -810,7 +848,7 @@ final class PlayerStore: ObservableObject {
             title: song.name,
             artist: song.artistText,
             album: song.albumName,
-            coverURL: song.albumPicUrl,
+            coverURL: currentCoverURL ?? song.albumPicUrl,
             lyricLine: line?.text ?? "",
             lyricTranslation: line?.translation,
             nextLine: nextLine,

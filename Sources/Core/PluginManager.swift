@@ -205,14 +205,222 @@ final class PluginManager: ObservableObject {
         runtime.dispatchSettingChange(pluginID: pluginID, key: key, valueJSON: value.jsonText)
     }
 
-    func applyRegistration(pluginID: String, settings: [PluginSetting], menus: [PluginMenu]) {
-        registrations[pluginID] = PluginRegistration(settings: settings, menus: menus)
+    func applyRegistration(
+        pluginID: String,
+        settings: [PluginSetting],
+        menus: [PluginMenu],
+        sources: [String: PluginSource]
+    ) {
+        registrations[pluginID] = PluginRegistration(settings: settings, menus: menus, sources: sources)
 
         guard let index = plugins.firstIndex(where: { $0.id == pluginID }) else { return }
         if plugins[index].settingsSchema != settings {
             plugins[index].settingsSchema = settings
             persist()
         }
+    }
+
+    // MARK: - 音源兜底
+
+    /// 官方接口失败时，按安装顺序尝试声明了对应能力的插件
+    private func sourcePlugins(source: String, action: String) -> [InstalledPlugin] {
+        plugins.filter { plugin in
+            plugin.enabled &&
+                runtime.isLoaded(pluginID: plugin.id) &&
+                registrations[plugin.id]?.sources[source]?.actions.contains(action) == true
+        }
+    }
+
+    /// 官方播放地址不可用（VIP / 无版权 / 上游故障）时，用插件解析直链
+    func resolvePlaybackURL(for song: Song) async -> URL? {
+        for plugin in sourcePlugins(source: "wy", action: "musicUrl") {
+            let payload: [String: Any] = [
+                "source": "wy",
+                "quality": Self.pluginQuality(for: AppSettings.audioLevel),
+                "musicInfo": Self.musicInfoPayload(song)
+            ]
+            do {
+                let result = try await runtime.callSource(
+                    pluginID: plugin.id,
+                    action: "musicUrl",
+                    payload: payload
+                )
+                guard let dictionary = result as? [String: Any],
+                      let raw = dictionary["url"] as? String,
+                      let url = URL(string: raw),
+                      let scheme = url.scheme?.lowercased(),
+                      scheme == "http" || scheme == "https" else { continue }
+                NSLog("[Plugin] %@ 提供播放地址：%@", plugin.name, url.absoluteString)
+                return url
+            } catch {
+                handleLog(pluginID: plugin.id, level: "warn", message: "musicUrl 失败：\(error.localizedDescription)")
+            }
+        }
+        return nil
+    }
+
+    /// 官方歌词缺失时，用插件获取歌词（LRC / 逐字文本）
+    func resolveLyric(for song: Song) async -> (text: String, wordText: String?)? {
+        for plugin in sourcePlugins(source: "wy", action: "musicLyric") {
+            let payload: [String: Any] = [
+                "source": "wy",
+                "quality": Self.pluginQuality(for: AppSettings.audioLevel),
+                "musicInfo": Self.musicInfoPayload(song)
+            ]
+            do {
+                let result = try await runtime.callSource(
+                    pluginID: plugin.id,
+                    action: "musicLyric",
+                    payload: payload,
+                    timeout: 15
+                )
+                guard let dictionary = result as? [String: Any] else { continue }
+                let text = (dictionary["lyric"] as? String ?? "")
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !text.isEmpty else { continue }
+                let wordText = (dictionary["awlyric"] as? String)?
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                NSLog("[Plugin] %@ 提供歌词（%ld 字符）", plugin.name, text.count)
+                return (text, wordText?.isEmpty == false ? wordText : nil)
+            } catch {
+                handleLog(pluginID: plugin.id, level: "warn", message: "musicLyric 失败：\(error.localizedDescription)")
+            }
+        }
+        return nil
+    }
+
+    /// 官方封面缺失时，用插件获取封面地址
+    func resolveCoverURL(for song: Song) async -> String? {
+        for plugin in sourcePlugins(source: "wy", action: "musicPic") {
+            let payload: [String: Any] = [
+                "source": "wy",
+                "musicInfo": Self.musicInfoPayload(song)
+            ]
+            do {
+                let result = try await runtime.callSource(
+                    pluginID: plugin.id,
+                    action: "musicPic",
+                    payload: payload,
+                    timeout: 12
+                )
+                guard let dictionary = result as? [String: Any],
+                      let raw = dictionary["url"] as? String,
+                      let url = URL(string: raw),
+                      let scheme = url.scheme?.lowercased(),
+                      scheme == "http" || scheme == "https" else { continue }
+                return raw
+            } catch {
+                handleLog(pluginID: plugin.id, level: "warn", message: "musicPic 失败：\(error.localizedDescription)")
+            }
+        }
+        return nil
+    }
+
+    /// 官方搜索无结果时，用插件补充网易云曲库的匹配结果
+    func searchSongsViaPlugins(keyword: String, limit: Int = 30) async -> [Song] {
+        let trimmed = keyword.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return [] }
+
+        for plugin in sourcePlugins(source: "wy", action: "musicSearch") {
+            let payload: [String: Any] = [
+                "source": "wy",
+                "keyword": trimmed,
+                "page": 1,
+                "limit": limit
+            ]
+            do {
+                let result = try await runtime.callSource(
+                    pluginID: plugin.id,
+                    action: "musicSearch",
+                    payload: payload
+                )
+                guard let dictionary = result as? [String: Any],
+                      let list = dictionary["list"] as? [[String: Any]] else { continue }
+                let songs = list.compactMap(Self.song(from:))
+                if !songs.isEmpty {
+                    NSLog("[Plugin] %@ 搜索兜底返回 %ld 首", plugin.name, songs.count)
+                    return songs
+                }
+            } catch {
+                handleLog(pluginID: plugin.id, level: "warn", message: "musicSearch 失败：\(error.localizedDescription)")
+            }
+        }
+        return []
+    }
+
+    /// iOS 音质档位 → 桌面版插件约定的 quality 名称
+    private static func pluginQuality(for level: String) -> String {
+        switch level {
+        case "standard": return "lq"
+        case "higher": return "sq"
+        case "exhigh": return "hq"
+        case "lossless": return "lossless"
+        case "hires": return "hi-res"
+        default: return "hq"
+        }
+    }
+
+    private static func musicInfoPayload(_ song: Song) -> [String: Any] {
+        var info: [String: Any] = [
+            "id": String(song.id),
+            "songId": String(song.id),
+            "name": song.name,
+            "singer": song.artistText,
+            "artists": song.artists.map(\.name),
+            "album": song.albumName ?? "",
+            "albumName": song.albumName ?? "",
+            "duration": song.duration,
+            "durationMs": song.duration,
+            "source": "wy"
+        ]
+        if let cover = song.albumPicUrl, !cover.isEmpty {
+            info["cover"] = cover
+            info["picUrl"] = cover
+        }
+        return info
+    }
+
+    private static func song(from item: [String: Any]) -> Song? {
+        let rawID: Int?
+        if let number = item["id"] as? NSNumber {
+            rawID = number.intValue
+        } else if let text = item["id"] as? String {
+            rawID = Int(text)
+        } else {
+            rawID = nil
+        }
+        guard let id = rawID, id > 0,
+              let name = item["name"] as? String, !name.isEmpty else { return nil }
+
+        let singer = (item["singer"] as? String) ?? (item["artist"] as? String) ?? ""
+        let artists = singer
+            .split(whereSeparator: { "/,;&、，".contains($0) })
+            .map { String($0).trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+            .map { Song.Artist(id: nil, name: $0) }
+
+        let duration: Int
+        if let value = item["durationMs"] as? NSNumber {
+            duration = value.intValue
+        } else if let value = item["duration"] as? NSNumber {
+            duration = value.intValue
+        } else if let text = item["durationMs"] as? String, let value = Int(text) {
+            duration = value
+        } else {
+            duration = 0
+        }
+
+        let album = (item["album"] as? String)?.trimmingCharacters(in: .whitespaces)
+        let cover = (item["cover"] as? String) ?? (item["picUrl"] as? String)
+
+        return Song(
+            id: id,
+            name: name,
+            artists: artists,
+            albumName: album?.isEmpty == false ? album : nil,
+            albumPicUrl: cover?.isEmpty == false ? cover : nil,
+            duration: duration
+        )
     }
 
     // MARK: - 存储
