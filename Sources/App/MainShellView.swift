@@ -409,7 +409,7 @@ private struct ShellTopBar: View {
                 .frame(width: 30, height: 30)
                 .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(JellyPressButtonStyle())
         .help(isGlass ? "切换到经典界面" : "切换到液态玻璃界面")
         .accessibilityLabel(isGlass ? "切换到经典界面" : "切换到液态玻璃界面")
     }
@@ -499,7 +499,7 @@ private struct ShellTopBar: View {
                 .frame(width: 30, height: 30)
                 .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(JellyPressButtonStyle())
         .accessibilityLabel("切换主题")
     }
 
