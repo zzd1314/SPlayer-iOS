@@ -104,7 +104,9 @@ struct SettingsView: View {
                 if isGlass {
                     LiquidGlassSurface(
                         shape: RoundedRectangle(cornerRadius: 22, style: .continuous),
-                        borderStrength: 0
+                        cornerRadius: 22,
+                        variant: .overlay,
+                        borderStrength: 0.9
                     )
                 } else {
                     Rectangle().fill(.regularMaterial)
@@ -112,17 +114,7 @@ struct SettingsView: View {
             }
             .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
             .overlay {
-                if isGlass {
-                    RoundedRectangle(cornerRadius: 22, style: .continuous)
-                        .strokeBorder(
-                            LinearGradient(
-                                colors: [Color.white.opacity(0.9), Color.white.opacity(0.2)],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            ),
-                            lineWidth: 1
-                        )
-                } else {
+                if !isGlass {
                     RoundedRectangle(cornerRadius: 22, style: .continuous)
                         .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
                 }

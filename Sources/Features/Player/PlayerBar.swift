@@ -38,8 +38,13 @@ struct PlayerBar: View {
         }
         .background {
             if isGlass {
-                LiquidGlassSurface(shape: Rectangle(), borderStrength: 0)
-                    .ignoresSafeArea(edges: .bottom)
+                LiquidGlassSurface(
+                    shape: Rectangle(),
+                    cornerRadius: 0,
+                    variant: .bottomBar,
+                    borderStrength: 0.9
+                )
+                .ignoresSafeArea(edges: .bottom)
             } else {
                 Rectangle()
                     .fill(.regularMaterial)
@@ -47,14 +52,7 @@ struct PlayerBar: View {
             }
         }
         .overlay(alignment: .top) {
-            if isGlass {
-                LinearGradient(
-                    colors: [Color.white.opacity(0.65), Color.white.opacity(0.1)],
-                    startPoint: .leading,
-                    endPoint: .trailing
-                )
-                .frame(height: 0.5)
-            } else {
+            if !isGlass {
                 Rectangle()
                     .fill(Color.primary.opacity(0.08))
                     .frame(height: 0.5)

@@ -282,23 +282,20 @@ private struct ShellSidebar: View {
         .frame(maxHeight: .infinity)
         .background {
             if isGlass {
-                LiquidGlassSurface(shape: Rectangle(), borderStrength: 0)
-                    .ignoresSafeArea()
+                LiquidGlassSurface(
+                    shape: Rectangle(),
+                    cornerRadius: 0,
+                    variant: .surface,
+                    borderStrength: 0
+                )
+                .ignoresSafeArea()
             } else {
                 Color.primary.opacity(0.045)
                     .ignoresSafeArea()
             }
         }
         .overlay(alignment: .trailing) {
-            if isGlass {
-                LinearGradient(
-                    colors: [Color.white.opacity(0.7), Color.white.opacity(0.12)],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-                .frame(width: 0.5)
-                .ignoresSafeArea()
-            } else {
+            if !isGlass {
                 Rectangle()
                     .fill(Color.primary.opacity(0.07))
                     .frame(width: 0.5)
@@ -374,18 +371,16 @@ private struct ShellTopBar: View {
         .frame(height: 52)
         .background {
             if isGlass {
-                LiquidGlassSurface(shape: Rectangle(), borderStrength: 0)
+                LiquidGlassSurface(
+                    shape: Rectangle(),
+                    cornerRadius: 0,
+                    variant: .surface,
+                    borderStrength: 0
+                )
             }
         }
         .overlay(alignment: .bottom) {
-            if isGlass {
-                LinearGradient(
-                    colors: [Color.white.opacity(0.65), Color.white.opacity(0.1)],
-                    startPoint: .leading,
-                    endPoint: .trailing
-                )
-                .frame(height: 0.5)
-            } else {
+            if !isGlass {
                 Rectangle()
                     .fill(Color.primary.opacity(0.06))
                     .frame(height: 0.5)
@@ -477,7 +472,12 @@ private struct ShellTopBar: View {
         .frame(height: 34)
         .background {
             if isGlass {
-                LiquidGlassSurface(shape: Capsule(), borderStrength: 0.9)
+                LiquidGlassSurface(
+                    shape: Capsule(),
+                    cornerRadius: 17,
+                    variant: .input,
+                    borderStrength: 0.9
+                )
             } else {
                 Capsule().fill(Color.primary.opacity(0.06))
             }
@@ -533,13 +533,18 @@ private struct ShellTopBar: View {
             .padding(.vertical, 3)
             .background {
                 if isGlass {
-                    LiquidGlassSurface(shape: Capsule(), borderStrength: 0.9)
+                    LiquidGlassSurface(
+                        shape: Capsule(),
+                        cornerRadius: 16,
+                        variant: .input,
+                        borderStrength: 0.9
+                    )
                 } else {
                     Capsule().fill(Color.primary.opacity(0.05))
                 }
             }
         }
-        .buttonStyle(.plain)
+        .buttonStyle(JellyPressButtonStyle())
         .accessibilityLabel("个人主页")
     }
 }
