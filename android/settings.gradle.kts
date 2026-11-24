@@ -20,3 +20,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "SPlayerNext"
 include(":app")
+include(":webview")

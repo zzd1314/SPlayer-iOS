@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "skipLibCheck": true,
+    "strict": false,
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "typeRoots": [],
+    "types": [],
+    "lib": ["ES2022", "DOM"],
+    "paths": {
+      "@main/*": ["../electron/main/*"],
+      "@shared/*": ["../shared/*"]
+    }
+  },
+  "include": ["src/**/*.ts", "../electron/main/apis/netease/**/*.ts", "../shared/**/*.ts"]
+}
