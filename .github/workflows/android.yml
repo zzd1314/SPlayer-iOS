@@ -1,0 +1,63 @@
+name: Android CI
+
+on:
+  push:
+    branches: [ android ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install SDK packages
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Build debug APK
+        working-directory: android
+        run: gradle :app:assembleDebug --no-daemon --stacktrace
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: splayer-next-android-debug
+          path: android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG=android-v0.1.0
+          APK=$(ls android/app/build/outputs/apk/debug/*.apk | head -n1)
+          cp "$APK" splayer-next-android-v0.1.0-debug.apk
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" splayer-next-android-v0.1.0-debug.apk --clobber
+          else
+            gh release create "$TAG" splayer-next-android-v0.1.0-debug.apk \
+              --title "SPlayer Next Android v0.1.0" \
+              --notes "SPlayer Next 安卓端 MVP（Debug APK）：Compose 液态玻璃界面、首页/曲库/发现/我的、底部播放栏与玻璃/经典风格切换，数据为内置示例。"
+          fi
