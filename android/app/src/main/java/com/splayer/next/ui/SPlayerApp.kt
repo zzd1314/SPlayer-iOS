@@ -64,8 +64,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
 import com.splayer.next.data.AppSettings
+import com.splayer.next.data.ArtistItem
 import com.splayer.next.data.CoverColorExtractor
 import com.splayer.next.data.MusicRepository
+import com.splayer.next.data.MvItem
 import com.splayer.next.data.Playlist
 import com.splayer.next.data.Song
 import com.splayer.next.playback.PlayerController
@@ -122,6 +124,14 @@ private fun AppShell(dark: Boolean) {
     var showSettings by remember { mutableStateOf(false) }
     var showLogin by remember { mutableStateOf(false) }
     var detailPlaylist by remember { mutableStateOf<Playlist?>(null) }
+    var detailArtist by remember { mutableStateOf<ArtistItem?>(null) }
+    var detailAlbum by remember { mutableStateOf<Playlist?>(null) }
+    var commentSong by remember { mutableStateOf<Song?>(null) }
+    var showMvList by remember { mutableStateOf(false) }
+    var playingMv by remember { mutableStateOf<MvItem?>(null) }
+
+    val detailOpen = detailPlaylist != null || detailArtist != null ||
+        detailAlbum != null || commentSong != null || showMvList
 
     // 连接播放服务
     LaunchedEffect(Unit) {
@@ -162,7 +172,7 @@ private fun AppShell(dark: Boolean) {
                 .fillMaxSize()
                 .statusBarsPadding()
         ) {
-            if (detailPlaylist == null) {
+            if (!detailOpen) {
                 TopBar(
                     query = query,
                     onQueryChange = {
@@ -175,7 +185,34 @@ private fun AppShell(dark: Boolean) {
 
             Box(Modifier.weight(1f)) {
                 val detail = detailPlaylist
+                val artistDetail = detailArtist
+                val albumDetail = detailAlbum
+                val comment = commentSong
                 when {
+                    comment != null -> CommentScreen(
+                        song = comment,
+                        onBack = { commentSong = null }
+                    )
+
+                    albumDetail != null -> AlbumDetailScreen(
+                        album = albumDetail,
+                        onBack = { detailAlbum = null },
+                        onPlaySong = { list, index -> PlayerController.play(list, index) },
+                        onOpenArtist = { detailArtist = it }
+                    )
+
+                    artistDetail != null -> ArtistDetailScreen(
+                        artist = artistDetail,
+                        onBack = { detailArtist = null },
+                        onPlaySong = { list, index -> PlayerController.play(list, index) },
+                        onOpenAlbum = { detailAlbum = it }
+                    )
+
+                    showMvList -> MvListScreen(
+                        onBack = { showMvList = false },
+                        onOpenMv = { playingMv = it }
+                    )
+
                     detail != null -> PlaylistDetailScreen(
                         playlist = detail,
                         onBack = { detailPlaylist = null },
@@ -196,7 +233,9 @@ private fun AppShell(dark: Boolean) {
                         playlists = playlists,
                         loading = loadingHome,
                         onOpenPlaylist = { detailPlaylist = it },
-                        onOpenSearch = { tab = 3 }
+                        onOpenSearch = { tab = 3 },
+                        onOpenMv = { playingMv = it },
+                        onOpenMvList = { showMvList = true }
                     )
 
                     tab == 2 -> LibraryScreen(
@@ -205,7 +244,9 @@ private fun AppShell(dark: Boolean) {
                     )
 
                     tab == 3 -> SearchScreen(
-                        onPlaySong = { list, index -> PlayerController.play(list, index) }
+                        onPlaySong = { list, index -> PlayerController.play(list, index) },
+                        onOpenPlaylist = { detailPlaylist = it },
+                        onOpenArtist = { detailArtist = it }
                     )
 
                     else -> ProfileScreen(
@@ -224,12 +265,31 @@ private fun AppShell(dark: Boolean) {
                 onSelect = {
                     tab = it
                     detailPlaylist = null
+                    detailArtist = null
+                    detailAlbum = null
+                    commentSong = null
+                    showMvList = false
                 }
             )
         }
 
         AnimatedVisibility(visible = showFullPlayer) {
-            FullPlayerScreen(onClose = { showFullPlayer = false })
+            FullPlayerScreen(
+                onClose = { showFullPlayer = false },
+                onOpenComments = { song ->
+                    showFullPlayer = false
+                    commentSong = song
+                },
+                onOpenAlbum = { album ->
+                    showFullPlayer = false
+                    detailAlbum = album
+                }
+            )
+        }
+
+        val mv = playingMv
+        if (mv != null) {
+            MvPlayerScreen(mv = mv, onBack = { playingMv = null })
         }
 
         AnimatedVisibility(visible = showSettings) {

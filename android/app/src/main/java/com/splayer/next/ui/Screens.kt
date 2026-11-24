@@ -61,8 +61,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.splayer.next.data.AppSettings
 import com.splayer.next.data.ArtistItem
+import com.splayer.next.data.DownloadStore
 import com.splayer.next.data.LocalMusic
 import com.splayer.next.data.MusicRepository
+import com.splayer.next.data.MvItem
 import com.splayer.next.data.Playlist
 import com.splayer.next.data.Song
 import com.splayer.next.data.UserProfile
@@ -388,15 +390,19 @@ fun DiscoverScreen(
     playlists: List<Playlist>,
     loading: Boolean,
     onOpenPlaylist: (Playlist) -> Unit,
-    onOpenSearch: () -> Unit
+    onOpenSearch: () -> Unit,
+    onOpenMv: (MvItem) -> Unit,
+    onOpenMvList: () -> Unit
 ) {
     val palette = LocalPalette.current
     var tops by remember { mutableStateOf<List<Playlist>>(emptyList()) }
     var loadingTops by remember { mutableStateOf(true) }
+    var mvs by remember { mutableStateOf<List<MvItem>>(emptyList()) }
 
     LaunchedEffect(Unit) {
         tops = MusicRepository.topPlaylists()
         loadingTops = false
+        mvs = MusicRepository.topMvs()
     }
 
     LazyColumn(
@@ -506,6 +512,20 @@ fun DiscoverScreen(
                 }
             }
         }
+        if (mvs.isNotEmpty()) {
+            item { SectionHeader("MV 精选", "查看全部", onOpenMvList) }
+            item {
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    items(mvs.take(10)) { mv ->
+                        MvCard(
+                            mv = mv,
+                            onClick = { onOpenMv(mv) },
+                            modifier = Modifier.width(178.dp)
+                        )
+                    }
+                }
+            }
+        }
         item { Spacer(Modifier.height(4.dp)) }
     }
 }
@@ -557,12 +577,12 @@ fun LibraryScreen(
         }
     }
 
-    val tabs = listOf("我喜欢", "最近播放", "本地音乐", "全部歌曲")
+    val tabs = listOf("我喜欢", "最近播放", "本地音乐", "已下载")
     val current: List<Song> = when (tab) {
         0 -> AppSettings.likedSongs
         1 -> AppSettings.recentSongs
         2 -> localSongs
-        else -> emptyList()
+        else -> DownloadStore.songs
     }
 
     Column(Modifier.fillMaxSize()) {
@@ -593,8 +613,8 @@ fun LibraryScreen(
                     modifier = Modifier.weight(1f)
                 )
                 StatBlock(
-                    value = localSongs.size.toString(),
-                    label = "本地",
+                    value = DownloadStore.songs.size.toString(),
+                    label = "下载",
                     modifier = Modifier.weight(1f)
                 )
             }
@@ -645,7 +665,7 @@ fun LibraryScreen(
                                 0 -> "还没有收藏的歌曲"
                                 1 -> "还没有播放记录"
                                 2 -> "本地音乐为空"
-                                else -> "暂无歌曲"
+                                else -> "还没有下载的歌曲"
                             },
                             color = palette.textTertiary,
                             fontSize = 13.sp
@@ -678,7 +698,11 @@ fun LibraryScreen(
 // MARK: - 搜索
 
 @Composable
-fun SearchScreen(onPlaySong: (List<Song>, Int) -> Unit) {
+fun SearchScreen(
+    onPlaySong: (List<Song>, Int) -> Unit,
+    onOpenPlaylist: (Playlist) -> Unit,
+    onOpenArtist: (ArtistItem) -> Unit
+) {
     val palette = LocalPalette.current
     var query by remember { mutableStateOf("") }
     var tab by remember { mutableStateOf(0) }
@@ -878,7 +902,7 @@ fun SearchScreen(onPlaySong: (List<Song>, Int) -> Unit) {
                         item { EmptyHint("没有找到相关歌单", Modifier.height(160.dp)) }
                     }
                     items(playlists.size) { index ->
-                        PlaylistRow(playlists[index])
+                        PlaylistRow(playlists[index], onClick = { onOpenPlaylist(playlists[index]) })
                     }
                 }
 
@@ -890,7 +914,7 @@ fun SearchScreen(onPlaySong: (List<Song>, Int) -> Unit) {
                         item { EmptyHint("没有找到相关歌手", Modifier.height(160.dp)) }
                     }
                     items(artists.size) { index ->
-                        ArtistRow(artists[index])
+                        ArtistRow(artists[index], onClick = { onOpenArtist(artists[index]) })
                     }
                 }
             }
@@ -899,11 +923,12 @@ fun SearchScreen(onPlaySong: (List<Song>, Int) -> Unit) {
 }
 
 @Composable
-private fun PlaylistRow(playlist: Playlist) {
+private fun PlaylistRow(playlist: Playlist, onClick: () -> Unit) {
     val palette = LocalPalette.current
     Row(
         Modifier
             .fillMaxWidth()
+            .pressable(onClick)
             .padding(horizontal = 8.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -933,11 +958,12 @@ private fun PlaylistRow(playlist: Playlist) {
 }
 
 @Composable
-private fun ArtistRow(artist: ArtistItem) {
+private fun ArtistRow(artist: ArtistItem, onClick: () -> Unit) {
     val palette = LocalPalette.current
     Row(
         Modifier
             .fillMaxWidth()
+            .pressable(onClick)
             .padding(horizontal = 8.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {

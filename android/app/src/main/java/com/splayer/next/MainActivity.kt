@@ -8,6 +8,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import com.splayer.next.data.AppSettings
+import com.splayer.next.data.DownloadStore
 import com.splayer.next.ui.SPlayerApp
 
 class MainActivity : ComponentActivity() {
@@ -15,6 +16,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         AppSettings.init(applicationContext)
+        DownloadStore.init(applicationContext)
         enableEdgeToEdge()
         requestNotificationPermission()
         setContent {

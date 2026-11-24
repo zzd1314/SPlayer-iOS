@@ -21,9 +21,56 @@ data class Song(
     /** 网易云 fee 字段：1/4 为 VIP，8 为低音质免费 */
     val fee: Int = 0,
     /** 副标题（别名 / 版本信息） */
-    val alias: String? = null
+    val alias: String? = null,
+    /** 所属专辑 id，用于跳转专辑详情 */
+    val albumId: String? = null,
+    /** 歌手 id，用于跳转歌手详情 */
+    val artistId: String? = null
 ) {
     val durationLabel: String get() = formatDuration(durationMs)
+}
+
+/** 歌曲评论 */
+data class Comment(
+    val id: String,
+    val user: String,
+    val avatarUrl: String? = null,
+    val content: String = "",
+    val likedCount: Int = 0,
+    val timeLabel: String = "",
+    /** 是否为精彩评论 */
+    val hot: Boolean = false
+)
+
+/** 专辑详情 */
+data class AlbumDetail(
+    val album: Playlist,
+    val songs: List<Song> = emptyList(),
+    val description: String = "",
+    val artistId: String? = null,
+    val artistName: String = ""
+)
+
+/** 歌手详情 */
+data class ArtistDetail(
+    val artist: ArtistItem,
+    val description: String = "",
+    val songs: List<Song> = emptyList(),
+    val albums: List<Playlist> = emptyList()
+)
+
+/** MV 条目 */
+data class MvItem(
+    val id: String,
+    val name: String,
+    val artist: String = "",
+    val coverUrl: String? = null,
+    val durationMs: Long = 0L,
+    val playCount: Long = 0L,
+    val tint: Color = BrandAccent
+) {
+    val durationLabel: String get() = formatDuration(durationMs)
+    val playCountLabel: String get() = formatPlayCount(playCount)
 }
 
 /** 歌单 / 专辑 / 排行榜通用封面条目 */
@@ -121,6 +168,8 @@ fun songToJson(song: Song): JSONObject = JSONObject().apply {
     put("streamUrl", song.streamUrl)
     put("fee", song.fee)
     put("alias", song.alias ?: "")
+    put("albumId", song.albumId ?: "")
+    put("artistId", song.artistId ?: "")
 }
 
 fun songFromJson(json: JSONObject?): Song? {
@@ -138,7 +187,9 @@ fun songFromJson(json: JSONObject?): Song? {
         streamUrl = json.optString("streamUrl"),
         tint = tintForId(numericId),
         fee = json.optInt("fee"),
-        alias = json.optString("alias").ifBlank { null }
+        alias = json.optString("alias").ifBlank { null },
+        albumId = json.optString("albumId").ifBlank { null },
+        artistId = json.optString("artistId").ifBlank { null }
     )
 }
 

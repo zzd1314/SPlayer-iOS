@@ -144,6 +144,148 @@ object NetEaseApi {
     /** 匿名可用的歌曲外链，播放时会 302 到 CDN（可能为 http，需要允许跨协议重定向） */
     fun streamUrl(id: String): String = "$BASE/song/media/outer/url?id=$id.mp3"
 
+    // MARK: - 评论
+
+    /** 歌曲评论：精彩评论在前，普通评论在后，按评论 id 去重 */
+    suspend fun songComments(songId: String, limit: Int = 50): List<Comment> = withContext(Dispatchers.IO) {
+        val body = get("$BASE/api/v1/resource/comments/R_SO_4_$songId?limit=$limit&offset=0")
+        val root = JSONObject(body)
+        val result = mutableListOf<Comment>()
+        val seen = HashSet<String>()
+
+        fun append(array: JSONArray?, hot: Boolean) {
+            if (array == null) return
+            for (index in 0 until array.length()) {
+                val item = array.optJSONObject(index) ?: continue
+                val cid = item.optLong("commentId").takeIf { it > 0L }?.toString() ?: continue
+                if (!seen.add(cid)) continue
+                result.add(commentFrom(item, hot, cid))
+            }
+        }
+
+        append(root.optJSONArray("hotComments"), true)
+        append(root.optJSONArray("comments"), false)
+        result
+    }
+
+    // MARK: - 专辑
+
+    suspend fun albumDetail(id: String): AlbumDetail? = withContext(Dispatchers.IO) {
+        val root = JSONObject(get("$BASE/api/v1/album/$id"))
+        val albumObj = root.optJSONObject("album") ?: root
+        val albumId = albumObj.optLong("id").takeIf { it > 0L } ?: id.toLongOrNull() ?: 0L
+        val artistObj = albumObj.optJSONObject("artist")
+        val artistName = artistObj?.optString("name").orEmpty()
+        val artistId = artistObj?.optLong("id")?.takeIf { it > 0L }?.toString()
+        val songsArray = root.optJSONArray("songs") ?: JSONArray()
+        val songs = (0 until songsArray.length())
+            .mapNotNull { songFrom(songsArray.optJSONObject(it)) }
+        val size = albumObj.optInt("size").takeIf { it > 0 } ?: songs.size
+        val album = Playlist(
+            id = albumId.toString(),
+            title = albumObj.optString("name").ifBlank { "专辑" },
+            subtitle = artistName,
+            coverUrl = httpsUrl(albumObj.optString("picUrl")),
+            tint = tintForId(albumId),
+            trackCount = size
+        )
+        AlbumDetail(
+            album = album,
+            songs = songs,
+            description = albumObj.optString("description"),
+            artistId = artistId,
+            artistName = artistName
+        )
+    }
+
+    // MARK: - 歌手
+
+    suspend fun artistDetail(id: String): ArtistDetail? = withContext(Dispatchers.IO) {
+        val root = JSONObject(get("$BASE/api/artists?id=$id"))
+        val artistObj = root.optJSONObject("artist") ?: return@withContext null
+        val numericId = id.toLongOrNull() ?: 0L
+        val name = artistObj.optString("name").ifBlank { "未知艺人" }
+        val musicSize = artistObj.optInt("musicSize")
+        val albumSize = artistObj.optInt("albumSize")
+        val subtitle = buildString {
+            if (musicSize > 0) append("$musicSize 首单曲")
+            if (albumSize > 0) {
+                if (isNotEmpty()) append(" · ")
+                append("$albumSize 张专辑")
+            }
+        }.ifBlank { "歌手" }
+        val artist = ArtistItem(
+            id = id,
+            name = name,
+            coverUrl = httpsUrl(
+                artistObj.optString("picUrl").ifBlank { artistObj.optString("img1v1Url") }
+            ),
+            subtitle = subtitle,
+            tint = tintForId(numericId)
+        )
+
+        // 热门单曲：优先使用 /api/v1/artist/songs，失败时退回 hotSongs
+        var songs = (0 until (root.optJSONArray("hotSongs")?.length() ?: 0)).mapNotNull {
+            songFrom(root.optJSONArray("hotSongs")?.optJSONObject(it))
+        }
+        runCatching { get("$BASE/api/v1/artist/songs?id=$id&order=hot&limit=50&offset=0") }
+            .getOrNull()
+            ?.let { songBody ->
+                val array = JSONObject(songBody).optJSONArray("songs")
+                if (array != null && array.length() > 0) {
+                    songs = (0 until array.length()).mapNotNull { songFrom(array.optJSONObject(it)) }
+                }
+            }
+
+        val albums = runCatching {
+            val albumRoot = JSONObject(get("$BASE/api/artist/albums/$id?limit=30&offset=0"))
+            val array = albumRoot.optJSONArray("hotAlbums") ?: albumRoot.optJSONArray("more")
+                ?: JSONArray()
+            (0 until array.length()).mapNotNull { index ->
+                val item = array.optJSONObject(index) ?: return@mapNotNull null
+                val albumId = item.optLong("id")
+                if (albumId <= 0L) return@mapNotNull null
+                val albumArtist = item.optJSONObject("artist")?.optString("name").orEmpty()
+                Playlist(
+                    id = albumId.toString(),
+                    title = item.optString("name").ifBlank { "专辑" },
+                    subtitle = albumArtist.ifBlank { name },
+                    coverUrl = httpsUrl(item.optString("picUrl")),
+                    tint = tintForId(albumId),
+                    trackCount = item.optInt("size")
+                )
+            }
+        }.getOrDefault(emptyList())
+
+        ArtistDetail(
+            artist = artist,
+            description = artistObj.optString("briefDesc"),
+            songs = songs,
+            albums = albums
+        )
+    }
+
+    // MARK: - MV
+
+    suspend fun topMvs(limit: Int = 20): List<MvItem> = withContext(Dispatchers.IO) {
+        val root = JSONObject(get("$BASE/api/mv/toplist?limit=$limit&offset=0"))
+        val array = root.optJSONArray("data") ?: return@withContext emptyList()
+        (0 until array.length()).mapNotNull { mvFrom(array.optJSONObject(it)) }
+    }
+
+    suspend fun mvDetail(id: String): MvItem? = withContext(Dispatchers.IO) {
+        val root = JSONObject(get("$BASE/api/mv/detail?id=$id"))
+        mvFrom(root.optJSONObject("data"))
+    }
+
+    /** MV 播放地址（受版权限制时可能为空） */
+    suspend fun mvUrl(id: String): String? = withContext(Dispatchers.IO) {
+        runCatching {
+            val root = JSONObject(get("$BASE/api/mv/url?id=$id&r=1080"))
+            root.optJSONObject("data")?.optString("url")?.ifBlank { null }
+        }.getOrNull()
+    }
+
     // MARK: - 解析
 
     private fun songFrom(json: JSONObject?): Song? {
@@ -158,6 +300,8 @@ object NetEaseApi {
         val duration = json.optLong("duration").takeIf { it > 0L }
             ?: json.optLong("dt").takeIf { it > 0L }
             ?: 0L
+        val albumId = album?.optLong("id")?.takeIf { it > 0L }?.toString()
+        val artistId = artists?.optJSONObject(0)?.optLong("id")?.takeIf { it > 0L }?.toString()
 
         return Song(
             id = id.toString(),
@@ -171,8 +315,54 @@ object NetEaseApi {
             streamUrl = streamUrl(id.toString()),
             tint = tintForId(id),
             fee = json.optInt("fee"),
-            alias = alias
+            alias = alias,
+            albumId = albumId,
+            artistId = artistId
         )
+    }
+
+    private fun commentFrom(json: JSONObject, hot: Boolean, cid: String): Comment {
+        val user = json.optJSONObject("user")
+        val timestamp = json.optLong("time")
+        return Comment(
+            id = cid,
+            user = user?.optString("nickname").orEmpty().ifBlank { "网易云用户" },
+            avatarUrl = httpsUrl(user?.optString("avatarUrl")),
+            content = json.optString("content"),
+            likedCount = json.optInt("likedCount"),
+            timeLabel = formatCommentTime(timestamp),
+            hot = hot
+        )
+    }
+
+    private fun mvFrom(json: JSONObject?): MvItem? {
+        if (json == null) return null
+        val id = json.optLong("id").takeIf { it > 0L } ?: return null
+        val artist = json.optString("artistName").ifBlank {
+            json.optJSONObject("artist")?.optString("name").orEmpty().ifBlank {
+                json.optString("artist")
+            }
+        }
+        return MvItem(
+            id = id.toString(),
+            name = json.optString("name").ifBlank { "未知 MV" },
+            artist = artist.ifBlank { "未知艺人" },
+            coverUrl = httpsUrl(
+                json.optString("cover").ifBlank { json.optString("picUrl") }
+            ),
+            durationMs = json.optLong("duration"),
+            playCount = json.optLong("playCount"),
+            tint = tintForId(id)
+        )
+    }
+
+    /** 评论时间：yyyy-MM-dd，异常时间戳返回空串 */
+    private fun formatCommentTime(timestamp: Long): String {
+        if (timestamp <= 0L) return ""
+        return runCatching {
+            java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.CHINA)
+                .format(java.util.Date(timestamp))
+        }.getOrDefault("")
     }
 
     private fun artistNames(array: JSONArray?): String {

@@ -30,8 +30,11 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.DownloadDone
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.Forum
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.MoreHoriz
@@ -45,6 +48,7 @@ import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ModalBottomSheet
@@ -67,6 +71,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -74,6 +79,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.splayer.next.data.AppSettings
+import com.splayer.next.data.DownloadStore
+import com.splayer.next.data.Playlist
 import com.splayer.next.data.Song
 import com.splayer.next.data.formatDuration
 import com.splayer.next.playback.PlayerController
@@ -85,9 +92,14 @@ import kotlinx.coroutines.launch
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun FullPlayerScreen(onClose: () -> Unit) {
+fun FullPlayerScreen(
+    onClose: () -> Unit,
+    onOpenComments: (Song) -> Unit = {},
+    onOpenAlbum: (Playlist) -> Unit = {}
+) {
     val song = PlayerController.currentSong
     val palette = LocalPalette.current
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val pagerState = rememberPagerState(pageCount = { 3 })
     var showQueue by remember { mutableStateOf(false) }
@@ -149,8 +161,53 @@ fun FullPlayerScreen(onClose: () -> Unit) {
                         color = Color.White.copy(alpha = 0.58f),
                         fontSize = 10.sp,
                         maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.clickable {
+                            val albumId = song.albumId
+                            if (albumId != null) {
+                                onOpenAlbum(
+                                    Playlist(
+                                        id = albumId,
+                                        title = song.album.ifBlank { song.title },
+                                        subtitle = song.artist,
+                                        coverUrl = song.coverUrl,
+                                        tint = song.tint
+                                    )
+                                )
+                            }
+                        }
                     )
+                }
+                val downloading = DownloadStore.progress[song.id]
+                val downloaded = DownloadStore.isDownloaded(song.id)
+                IconButton(onClick = {
+                    when {
+                        downloaded -> DownloadStore.delete(song.id)
+                        downloading == null -> scope.launch { DownloadStore.download(context, song) }
+                    }
+                }) {
+                    when {
+                        downloading != null -> CircularProgressIndicator(
+                            progress = { downloading },
+                            color = Color.White,
+                            strokeWidth = 2.dp,
+                            modifier = Modifier.size(20.dp)
+                        )
+
+                        downloaded -> Icon(
+                            imageVector = Icons.Filled.DownloadDone,
+                            contentDescription = "已下载，点击删除",
+                            tint = Color.White,
+                            modifier = Modifier.size(22.dp)
+                        )
+
+                        else -> Icon(
+                            imageVector = Icons.Filled.Download,
+                            contentDescription = "下载",
+                            tint = Color.White,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
                 }
                 IconButton(onClick = { showOptions = true }) {
                     Icon(
@@ -200,7 +257,8 @@ fun FullPlayerScreen(onClose: () -> Unit) {
                 onOptions = { showOptions = true },
                 onLyrics = {
                     scope.launch { pagerState.animateScrollToPage(2) }
-                }
+                },
+                onComments = { onOpenComments(song) }
             )
             Spacer(Modifier.height(10.dp))
         }
@@ -575,7 +633,8 @@ private fun PlayerControlsRow(compact: Boolean = false) {
 private fun PlayerToolsRow(
     onQueue: () -> Unit,
     onOptions: () -> Unit,
-    onLyrics: () -> Unit
+    onLyrics: () -> Unit,
+    onComments: () -> Unit
 ) {
     val palette = LocalPalette.current
     val speed = PlayerController.playbackRate
@@ -585,6 +644,7 @@ private fun PlayerToolsRow(
         verticalAlignment = Alignment.CenterVertically
     ) {
         ToolItem(Icons.Filled.QueueMusic, "队列", onQueue)
+        ToolItem(Icons.Filled.Forum, "评论", onComments)
         ToolItem(Icons.Filled.Speed, if (speed == 1f) "倍速" else "${trimRate(speed)}x", onOptions)
         ToolItem(Icons.Filled.Bedtime, PlayerController.sleepLabel ?: "定时", onOptions)
         ToolItem(

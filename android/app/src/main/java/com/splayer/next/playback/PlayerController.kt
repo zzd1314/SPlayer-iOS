@@ -15,6 +15,7 @@ import androidx.media3.common.Player
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import com.splayer.next.data.AppSettings
+import com.splayer.next.data.DownloadStore
 import com.splayer.next.data.Lyric
 import com.splayer.next.data.MusicRepository
 import com.splayer.next.data.NetEaseApi
@@ -420,7 +421,9 @@ object PlayerController {
     }
 
     private fun Song.toMediaItem(): MediaItem {
-        val uri = streamUrl.ifBlank {
+        // 优先使用已下载的本地文件，实现离线播放
+        val localPath = DownloadStore.localPath(id)
+        val uri = localPath?.let { "file://$it" } ?: streamUrl.ifBlank {
             if (id.toLongOrNull() != null) NetEaseApi.streamUrl(id) else ""
         }
         val artwork = coverUrl?.takeIf { it.isNotBlank() }

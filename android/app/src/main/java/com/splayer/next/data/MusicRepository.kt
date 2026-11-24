@@ -71,4 +71,26 @@ object MusicRepository {
 
     suspend fun account(): UserProfile? =
         runCatching { NetEaseApi.account() }.getOrNull()
+
+    // MARK: - 评论 / 专辑 / 歌手 / MV
+
+    suspend fun songComments(songId: String): List<Comment> {
+        if (songId.startsWith("demo-") || songId.startsWith("local-")) return emptyList()
+        return runCatching { NetEaseApi.songComments(songId) }.getOrDefault(emptyList())
+    }
+
+    suspend fun albumDetail(id: String): AlbumDetail? =
+        runCatching { NetEaseApi.albumDetail(id) }.getOrNull()
+
+    suspend fun artistDetail(id: String): ArtistDetail? =
+        runCatching { NetEaseApi.artistDetail(id) }.getOrNull()
+
+    suspend fun topMvs(): List<MvItem> =
+        runCatching { NetEaseApi.topMvs() }.getOrDefault(emptyList())
+
+    suspend fun mvDetail(id: String): MvItem? =
+        runCatching { NetEaseApi.mvDetail(id) }.getOrNull()
+
+    suspend fun mvUrl(id: String): String? =
+        runCatching { NetEaseApi.mvUrl(id) }.getOrNull()
 }
