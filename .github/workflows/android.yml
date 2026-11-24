@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: write
+  issues: write
 
 jobs:
   build:
@@ -100,27 +101,57 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libclang-dev
 
       - name: Build Rust audio core (ffmpeg_audio → arm64-v8a)
+        id: rustcore
+        continue-on-error: true
         run: |
-          set -e
-          # 固定 ffmpeg-audio commit（audio-engine 同源解码核心）
-          git clone https://github.com/SPlayer-Dev/ffmpeg-audio.git tools/ffmpeg-audio
-          git -C tools/ffmpeg-audio checkout 16bd156
-          git -C tools/ffmpeg-audio log --oneline -1
-          NDK="${ANDROID_NDK_LATEST_HOME:-}"
-          if [ -z "$NDK" ]; then NDK="$ANDROID_HOME/ndk/$(ls "$ANDROID_HOME/ndk" | sort -V | tail -n 1)"; fi
-          echo "Using NDK: $NDK"
-          TOOL="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin"
-          export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$TOOL/aarch64-linux-android24-clang"
-          export CC_aarch64_linux_android="$TOOL/aarch64-linux-android24-clang"
-          export AR_aarch64_linux_android="$TOOL/llvm-ar"
-          export LIBCLANG_PATH=$(ls -d /usr/lib/llvm-*/lib | sort -V | tail -n 1)
-          cargo build --release --target aarch64-linux-android \
-            --manifest-path tools/rust-android-test/Cargo.toml
-          mkdir -p android/webview/src/main/jniLibs/arm64-v8a
-          cp tools/rust-android-test/target/aarch64-linux-android/release/librust_android_test.so \
-             android/webview/src/main/jniLibs/arm64-v8a/
-          ls -l android/webview/src/main/jniLibs/arm64-v8a/
-          "$TOOL/llvm-nm" -D android/webview/src/main/jniLibs/arm64-v8a/librust_android_test.so | grep Java_ || true
+          set +e
+          {
+            set -e
+            # 固定 ffmpeg-audio commit（audio-engine 同源解码核心）
+            git clone https://github.com/SPlayer-Dev/ffmpeg-audio.git tools/ffmpeg-audio
+            git -C tools/ffmpeg-audio checkout 16bd156
+            git -C tools/ffmpeg-audio log --oneline -1
+            NDK="${ANDROID_NDK_LATEST_HOME:-}"
+            if [ -z "$NDK" ]; then NDK="$ANDROID_HOME/ndk/$(ls "$ANDROID_HOME/ndk" | sort -V | tail -n 1)"; fi
+            echo "Using NDK: $NDK"
+            TOOL="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin"
+            export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$TOOL/aarch64-linux-android24-clang"
+            export CC_aarch64_linux_android="$TOOL/aarch64-linux-android24-clang"
+            export AR_aarch64_linux_android="$TOOL/llvm-ar"
+            export LIBCLANG_PATH=$(ls -d /usr/lib/llvm-*/lib 2>/dev/null | sort -V | tail -n 1)
+            echo "LIBCLANG_PATH=$LIBCLANG_PATH"
+            cargo build --release --target aarch64-linux-android \
+              --manifest-path tools/rust-android-test/Cargo.toml
+            mkdir -p android/webview/src/main/jniLibs/arm64-v8a
+            cp tools/rust-android-test/target/aarch64-linux-android/release/librust_android_test.so \
+               android/webview/src/main/jniLibs/arm64-v8a/
+            ls -l android/webview/src/main/jniLibs/arm64-v8a/
+            "$TOOL/llvm-nm" -D android/webview/src/main/jniLibs/arm64-v8a/librust_android_test.so | grep Java_ || true
+          } > rust-build.log 2>&1
+          code=$?
+          tail -n 100 rust-build.log
+          exit $code
+
+      - name: Report Rust build failure (diagnostics issue)
+        if: steps.rustcore.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          {
+            echo "主发布流程 Rust ARM64 构建失败（commit $GITHUB_SHA），日志尾部："
+            echo '```'
+            tail -n 200 rust-build.log 2>/dev/null || echo "(日志文件缺失)"
+            echo '```'
+          } > diag.md
+          ISSUE=$(gh issue list --state open --search "CI 诊断：Rust ARM64 构建 in:title" --json number --jq '.[0].number' 2>/dev/null || true)
+          if [ -z "$ISSUE" ]; then
+            gh issue create --title "CI 诊断：Rust ARM64 构建" --body-file diag.md
+          else
+            gh issue comment "$ISSUE" --body-file diag.md
+          fi
+
+      - name: Ensure Rust core packaged
+        run: test -f android/webview/src/main/jniLibs/arm64-v8a/librust_android_test.so
 
       - name: Build debug APK
         run: gradle -p android :webview:assembleDebug --no-daemon --stacktrace
