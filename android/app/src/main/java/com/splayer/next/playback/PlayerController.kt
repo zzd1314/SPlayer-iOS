@@ -289,6 +289,7 @@ object PlayerController {
     /** 进度条拖拽得到的是比例换算后的 Float 毫秒，这里统一转换 */
     fun seekTo(positionMs: Float) = seekTo(positionMs.toLong())
 
+    @JvmName("applyRepeatMode")
     fun setRepeatMode(mode: Int) {
         repeatMode = mode.coerceIn(0, 2)
         AppSettings.setRepeatMode(repeatMode)
@@ -305,12 +306,14 @@ object PlayerController {
         controller?.shuffleModeEnabled = shuffle
     }
 
+    @JvmName("applyPlaybackRate")
     fun setPlaybackRate(rate: Float) {
         playbackRate = rate
         AppSettings.setPlaybackRate(rate)
         controller?.setPlaybackParameters(PlaybackParameters(rate))
     }
 
+    @JvmName("applyVolume")
     fun setVolume(value: Float) {
         volume = value.coerceIn(0f, 1f)
         AppSettings.setVolume(volume)

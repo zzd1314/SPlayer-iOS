@@ -129,11 +129,13 @@ object AppSettings {
 
     // MARK: - 主题
 
+    @JvmName("applyThemeMode")
     fun setThemeMode(value: String) {
         themeMode = value
         prefs.edit("theme_mode", value)
     }
 
+    @JvmName("applyColorSource")
     fun setColorSource(value: String) {
         colorSource = value
         prefs.edit("color_source", value)
@@ -144,16 +146,19 @@ object AppSettings {
         prefs.edit("custom_color", hex)
     }
 
+    @JvmName("applyUiStyle")
     fun setUiStyle(value: String) {
         uiStyle = value
         prefs.edit("ui_style", value)
     }
 
+    @JvmName("applyFollowCoverColor")
     fun setFollowCoverColor(value: Boolean) {
         followCoverColor = value
         prefs.edit("follow_cover_color", value)
     }
 
+    @JvmName("applyKeepScreenAwake")
     fun setKeepScreenAwake(value: Boolean) {
         keepScreenAwake = value
         prefs.edit("keep_screen_awake", value)
@@ -161,36 +166,43 @@ object AppSettings {
 
     // MARK: - 播放与歌词
 
+    @JvmName("applyPlaybackRate")
     fun setPlaybackRate(value: Float) {
         playbackRate = value
         prefs.edit("playback_rate", value)
     }
 
+    @JvmName("applyVolume")
     fun setVolume(value: Float) {
         volume = value.coerceIn(0f, 1f)
         prefs.edit("volume", volume)
     }
 
+    @JvmName("applyRepeatMode")
     fun setRepeatMode(value: Int) {
         repeatMode = value.coerceIn(0, 2)
         prefs.edit("repeat_mode", repeatMode)
     }
 
+    @JvmName("applyShuffle")
     fun setShuffle(value: Boolean) {
         shuffle = value
         prefs.edit("shuffle", value)
     }
 
+    @JvmName("applyShowTranslation")
     fun setShowTranslation(value: Boolean) {
         showTranslation = value
         prefs.edit("show_translation", value)
     }
 
+    @JvmName("applyLyricAlignCenter")
     fun setLyricAlignCenter(value: Boolean) {
         lyricAlignCenter = value
         prefs.edit("lyric_align_center", value)
     }
 
+    @JvmName("applyLyricFontScale")
     fun setLyricFontScale(value: Float) {
         lyricFontScale = value.coerceIn(0.8f, 1.6f)
         prefs.edit("lyric_font_scale", lyricFontScale)
