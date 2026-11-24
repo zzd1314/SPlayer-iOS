@@ -33,6 +33,7 @@ class BridgeRouter(private val context: Context, private val bridge: Any?) {
         "library" -> libraryStore.handle(method, args)
         "playlist" -> playlistStore.handle(method, args)
         "download" -> DownloadManager.handle(method, args)
+        "rust" -> RustBridge.probe()
         else -> throw BridgeUnsupportedException("$ns.$method 暂未在 Android 端实现")
     }
 

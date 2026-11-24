@@ -91,6 +91,37 @@ jobs:
           node android-bridge/build-streaming.mjs \
             "$GITHUB_WORKSPACE/android/webview/src/main/assets/web/streaming-api.js"
 
+      - name: Set up Rust (aarch64-linux-android)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - name: Install libclang (bindgen requirement)
+        run: sudo apt-get update && sudo apt-get install -y libclang-dev
+
+      - name: Build Rust audio core (ffmpeg_audio → arm64-v8a)
+        run: |
+          set -e
+          # 固定 ffmpeg-audio commit（audio-engine 同源解码核心）
+          git clone https://github.com/SPlayer-Dev/ffmpeg-audio.git tools/ffmpeg-audio
+          git -C tools/ffmpeg-audio checkout 16bd156
+          git -C tools/ffmpeg-audio log --oneline -1
+          NDK="${ANDROID_NDK_LATEST_HOME:-}"
+          if [ -z "$NDK" ]; then NDK="$ANDROID_HOME/ndk/$(ls "$ANDROID_HOME/ndk" | sort -V | tail -n 1)"; fi
+          echo "Using NDK: $NDK"
+          TOOL="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$TOOL/aarch64-linux-android24-clang"
+          export CC_aarch64_linux_android="$TOOL/aarch64-linux-android24-clang"
+          export AR_aarch64_linux_android="$TOOL/llvm-ar"
+          export LIBCLANG_PATH=$(ls -d /usr/lib/llvm-*/lib | sort -V | tail -n 1)
+          cargo build --release --target aarch64-linux-android \
+            --manifest-path tools/rust-android-test/Cargo.toml
+          mkdir -p android/webview/src/main/jniLibs/arm64-v8a
+          cp tools/rust-android-test/target/aarch64-linux-android/release/librust_android_test.so \
+             android/webview/src/main/jniLibs/arm64-v8a/
+          ls -l android/webview/src/main/jniLibs/arm64-v8a/
+          "$TOOL/llvm-nm" -D android/webview/src/main/jniLibs/arm64-v8a/librust_android_test.so | grep Java_ || true
+
       - name: Build debug APK
         run: gradle -p android :webview:assembleDebug --no-daemon --stacktrace
 
@@ -98,42 +129,47 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TAG=android-v1.1.0
+          TAG=android-v1.1.1
           APK=$(find android/webview/build/outputs/apk/debug -name "*.apk" | head -n1)
           if [ -z "$APK" ]; then
             echo "未找到 APK，终止发布"
             exit 1
           fi
-          cp "$APK" splayer-next-android-v1.1.0-web-debug.apk
+          cp "$APK" splayer-next-android-v1.1.1-web-debug.apk
           {
-            echo 'SPlayer Next Android v1.1.0 —— 基于上游 SPlayer-Next 原版 Vue 前端的 WebView 移植（第二阶段功能补全版）：'
+            echo 'SPlayer Next Android v1.1.1 —— 基于上游 SPlayer-Next 原版 Vue 前端的 WebView 移植（第二阶段功能补全版）：'
+            echo ''
+            echo '**v1.1.1 新增（Rust 音频核心接入）**'
+            echo '- FFmpeg 音频核心已完成 aarch64-linux-android 交叉编译并以约 460KB 动态库随 APK 打包（librust_android_test.so，静态链接 FFmpeg n9.0.2）。'
+            echo '- 通过 window.api.rust.probe() 可实测动态库加载状态、JNI 符号绑定与 FFmpeg 主版本号，为完整 audio-engine 迁移提供可验证入口。'
             echo ''
             echo '**v1.1.0 新增**'
             echo '- 流媒体服务器：Subsonic / Navidrome / Jellyfin / Emby —— 直接复用上游主进程 streaming 服务层（26 个 TS 模块），加密、认证、音乐库同步逻辑与桌面版一致。'
             echo '- 本地音乐库：MediaStore 扫描 + SQLite 持久化，专辑 / 艺术家 / 搜索 / 随机曲目，封面经内嵌 art 提取。'
             echo '- 下载管理器：队列 / 进度 / 取消 / SAF 目录选择 / 歌词文件写入。'
             echo '- 播放列表：本地 SQLite 完整 CRUD。'
-            echo '- 实时 FFT 频谱：android.media.Visualizer 提供同规格频谱数据（需授权麦克风权限）。'
+            echo '- 实时 FFT 频谱：android.media.audiofx.Visualizer 提供同规格频谱数据（需授权麦克风权限）。'
             echo '- 网易云在线搜索 / 播放 / 歌词 / 收藏（v1.0 已有）。'
             echo ''
             echo '**移植方式**'
             echo '- 原版渲染层（Vue 3 + Pinia + UnoCSS）在 CI 中从锁定 commit（5772455）实时构建，UI 与桌面版 1:1。'
             echo '- 网易云 API 加密层（eapi / xeapi）与流媒体服务层直接复用上游主进程 TS 模块，在 WebView 内运行，请求经原生 HTTP 代理转发。'
-            echo '- 播放内核使用 Media3（ExoPlayer）承接原 Rust audio-engine 的播放契约。'
+            echo '- 播放内核仍使用 Media3（ExoPlayer）承接原 Rust audio-engine 的播放契约；Rust/FFmpeg 核心以动态库形式随包提供，完整解码链路接入尚未完成。'
             echo '- MediaSession 前台服务：锁屏 / 通知栏 / 蓝牙控制、后台播放、音频焦点管理。'
             echo ''
             echo '**已知限制（后续版本迭代）**'
-            echo '- Rust audio-engine + FFmpeg ARM64 原生编译仍在验证中，当前播放内核为 Media3；APE 等冷门格式暂不支持。'
+            echo '- Rust audio-engine 完整解码 / 输出链路（cpal oboe / napi→JNI 全量绑定）尚未接入，当前播放内核为 Media3；APE 等冷门格式暂不支持。'
             echo '- 本地音乐标签写入（writeTags）暂不支持（Android 端无成熟标签库），元数据编辑会在后续版本补齐。'
             echo '- 下载标签嵌入（封面 / 歌词写入音频文件）暂未实现，仅写入同名 .lrc 歌词文件。'
+            echo '- 未进行真机 / 模拟器运行验证（当前环境无 Android 设备），以上功能仅通过编译与 APK 结构校验。'
             echo ''
-            echo '安装包需要 Android 8.0（API 26）及以上。'
+            echo '安装包需要 Android 8.0（API 26）及以上，当前仅提供 arm64-v8a。'
           } > release-notes.md
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" splayer-next-android-v1.1.0-web-debug.apk --clobber
+            gh release upload "$TAG" splayer-next-android-v1.1.1-web-debug.apk --clobber
           else
-            gh release create "$TAG" splayer-next-android-v1.1.0-web-debug.apk \
+            gh release create "$TAG" splayer-next-android-v1.1.1-web-debug.apk \
               --target "$GITHUB_SHA" \
-              --title "SPlayer Next Android v1.1.0（功能补全版）" \
+              --title "SPlayer Next Android v1.1.1（Rust 音频核心接入）" \
               --notes-file release-notes.md
           fi
