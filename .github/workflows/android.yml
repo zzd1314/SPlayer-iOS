@@ -93,24 +93,27 @@ jobs:
             exit 1
           fi
           cp "$APK" splayer-next-android-v1.0.0-web-debug.apk
+          {
+            echo 'SPlayer Next Android v1.0.0 —— 基于上游 SPlayer-Next 原版 Vue 前端的 WebView 移植：'
+            echo ''
+            echo '**移植方式**'
+            echo '- 原版渲染层（Vue 3 + Pinia + UnoCSS）在 CI 中从上游源码实时构建，UI 与桌面版 1:1。'
+            echo '- 网易云 API 加密层（eapi / xeapi）直接复用上游主进程 TS 模块，在 WebView 内运行，请求经原生 HTTP 代理转发。'
+            echo '- 播放内核使用 Media3（ExoPlayer）承接原 Rust audio-engine 的播放契约，支持 mp3 / flac / ogg / aac / wav 在线与本地流播放。'
+            echo '- MediaSession 前台服务：锁屏 / 通知栏 / 蓝牙控制、后台播放、音频焦点管理。'
+            echo ''
+            echo '**已知限制（后续版本迭代）**'
+            echo '- 本地音乐扫描、下载管理器、流媒体服务器（Subsonic/Jellyfin/Emby）暂未接入本版，将在后续版本补齐。'
+            echo '- 实时 FFT 频谱暂不可用（Media3 可视化数据待接入）。'
+            echo '- APE 等极少见格式依赖 FFmpeg 扩展，暂不支持。'
+            echo ''
+            echo '安装包约 9MB，需要 Android 8.0（API 26）及以上。'
+          } > release-notes.md
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" splayer-next-android-v1.0.0-web-debug.apk --clobber
           else
             gh release create "$TAG" splayer-next-android-v1.0.0-web-debug.apk \
               --target "$GITHUB_SHA" \
               --title "SPlayer Next Android v1.0.0（原版 UI 移植版）" \
-              --notes "SPlayer Next Android v1.0.0 —— 基于上游 SPlayer-Next 原版 Vue 前端的 WebView 移植：
-
-**移植方式**
-- 原版渲染层（Vue 3 + Pinia + UnoCSS）在 CI 中从上游源码实时构建，UI 与桌面版 1:1。
-- 网易云 API 加密层（eapi / xeapi）直接复用上游主进程 TS 模块，在 WebView 内运行，请求经原生 HTTP 代理转发。
-- 播放内核使用 Media3（ExoPlayer）承接原 Rust audio-engine 的播放契约，支持 mp3 / flac / ogg / aac / wav 在线与本地流播放。
-- MediaSession 前台服务：锁屏 / 通知栏 / 蓝牙控制、后台播放、音频焦点管理。
-
-**已知限制（后续版本迭代）**
-- 本地音乐扫描、下载管理器、流媒体服务器（Subsonic/Jellyfin/Emby）暂未接入本版，将在后续版本补齐。
-- 实时 FFT 频谱暂不可用（Media3 可视化数据待接入）。
-- APE 等极少见格式依赖 FFmpeg 扩展，暂不支持。
-
-安装包约 9MB，需要 Android 8.0（API 26）及以上。"
+              --notes-file release-notes.md
           fi
