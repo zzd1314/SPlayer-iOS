@@ -62,7 +62,11 @@ export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$TOOL/aarch64-linux-android24-
 export CC_aarch64_linux_android="$TOOL/aarch64-linux-android24-clang"
 export AR_aarch64_linux_android="$TOOL/llvm-ar"
 export LIBCLANG_PATH="${LIBCLANG_PATH:-$(ls -d /usr/lib/llvm-*/lib 2>/dev/null | sort -V | tail -n 1)}"
-export BINDGEN_EXTRA_CLANG_ARGS="--sysroot=$SYSROOT"
+# 注意：NDK r30 的 sys/cdefs.h 会拒绝无版本三元组
+# （"Unversioned target triples are not supported!"），
+# 因此必须追加带 API level 的 --target，覆盖 upstream build.rs 里的
+# --target=aarch64-linux-android（clang 以最后一个 --target 为准）。
+export BINDGEN_EXTRA_CLANG_ARGS="--sysroot=$SYSROOT --target=aarch64-linux-android24"
 echo "LIBCLANG_PATH=$LIBCLANG_PATH"
 echo "BINDGEN_EXTRA_CLANG_ARGS=$BINDGEN_EXTRA_CLANG_ARGS"
 
