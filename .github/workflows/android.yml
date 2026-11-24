@@ -105,29 +105,7 @@ jobs:
         continue-on-error: true
         run: |
           set +e
-          {
-            set -e
-            # 固定 ffmpeg-audio commit（audio-engine 同源解码核心）
-            git clone https://github.com/SPlayer-Dev/ffmpeg-audio.git tools/ffmpeg-audio
-            git -C tools/ffmpeg-audio checkout 16bd156
-            git -C tools/ffmpeg-audio log --oneline -1
-            NDK="${ANDROID_NDK_LATEST_HOME:-}"
-            if [ -z "$NDK" ]; then NDK="$ANDROID_HOME/ndk/$(ls "$ANDROID_HOME/ndk" | sort -V | tail -n 1)"; fi
-            echo "Using NDK: $NDK"
-            TOOL="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin"
-            export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$TOOL/aarch64-linux-android24-clang"
-            export CC_aarch64_linux_android="$TOOL/aarch64-linux-android24-clang"
-            export AR_aarch64_linux_android="$TOOL/llvm-ar"
-            export LIBCLANG_PATH=$(ls -d /usr/lib/llvm-*/lib 2>/dev/null | sort -V | tail -n 1)
-            echo "LIBCLANG_PATH=$LIBCLANG_PATH"
-            cargo build --release --target aarch64-linux-android \
-              --manifest-path tools/rust-android-test/Cargo.toml
-            mkdir -p android/webview/src/main/jniLibs/arm64-v8a
-            cp tools/rust-android-test/target/aarch64-linux-android/release/librust_android_test.so \
-               android/webview/src/main/jniLibs/arm64-v8a/
-            ls -l android/webview/src/main/jniLibs/arm64-v8a/
-            "$TOOL/llvm-nm" -D android/webview/src/main/jniLibs/arm64-v8a/librust_android_test.so | grep Java_ || true
-          } > rust-build.log 2>&1
+          bash tools/rust-android-test/ci-build.sh android/webview/src/main/jniLibs/arm64-v8a > rust-build.log 2>&1
           code=$?
           tail -n 100 rust-build.log
           exit $code
