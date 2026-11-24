@@ -12,8 +12,8 @@ android {
         applicationId = "com.splayer.next"
         minSdk = 26
         targetSdk = 35
-        versionCode = 102
-        versionName = "1.1.1"
+        versionCode = 103
+        versionName = "1.1.2"
     }
 
     buildTypes {

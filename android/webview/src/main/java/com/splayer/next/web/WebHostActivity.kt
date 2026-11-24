@@ -163,10 +163,9 @@ class RendererAssetHandler(private val context: Context) : WebViewAssetLoader.Pa
             if (clean == "index.html") {
                 val html = context.assets.open("web/index.html")
                     .bufferedReader().use { it.readText() }
-                val injected = html.replace(
-                    Regex("<head([^>]*)>"),
-                    "$0<script src=\"/assets/bridge.js\"></script>"
-                )
+                val injected = html.replace(Regex("<head([^>]*)>")) { match ->
+                    match.value + "<script src=\"/assets/bridge.js\"></script>" + BOOT_GUARD
+                }
                 response("text/html", injected.toByteArray())
             } else {
                 val stream = context.assets.open("web/$clean")
@@ -205,3 +204,64 @@ class RendererAssetHandler(private val context: Context) : WebViewAssetLoader.Pa
         else -> "application/octet-stream"
     }
 }
+
+/**
+ * 启动守护脚本：渲染层 bootstrap 失败时上游不会移除 #app-loading（只会调用 startupFailed），
+ * 真机上表现就是永远停在 logo。这里兜底捕获 JS 错误，8 秒后仍未进入主界面则覆盖显示诊断面板，
+ * 同时把首条错误经 bridge 上报到 logcat（标签 SPlayerBoot）。
+ */
+private const val BOOT_GUARD = """
+<script>
+(function () {
+  var errors = [];
+  function report(msg) {
+    try {
+      var text = String(msg && msg.stack ? msg.stack : msg).slice(0, 2000);
+      errors.push(text);
+      if (errors.length > 20) errors.shift();
+      if (window.SPlayerNative && window.SPlayerNative.call) {
+        try {
+          window.SPlayerNative.call('system', 'reportBootError', 'boot-' + Date.now(), JSON.stringify([text]));
+        } catch (e) {}
+      }
+    } catch (e) {}
+  }
+  window.__splayerBootErrors = errors;
+  window.addEventListener('error', function (e) { report(e.error || e.message); });
+  window.addEventListener('unhandledrejection', function (e) { report(e.reason); });
+  var rawError = console.error;
+  console.error = function () {
+    report(Array.prototype.join.call(arguments, ' '));
+    rawError.apply(console, arguments);
+  };
+  var shown = false;
+  function showPanel() {
+    if (shown) return;
+    var splash = document.getElementById('app-loading');
+    if (!splash) return;
+    shown = true;
+    var box = document.createElement('div');
+    box.style.cssText = 'position:fixed;inset:0;z-index:100000;background:#101014;color:#e8e8ea;font:12px/1.6 monospace;padding:18px;overflow:auto;-webkit-user-select:text;user-select:text';
+    var title = document.createElement('div');
+    title.textContent = 'SPlayer 启动失败（诊断信息）';
+    title.style.cssText = 'font-size:16px;font-weight:700;color:#fe7971;margin-bottom:10px';
+    var meta = document.createElement('div');
+    meta.style.cssText = 'white-space:pre-wrap;opacity:.65;margin-bottom:12px';
+    meta.textContent = 'URL: ' + location.href + '\nUA: ' + navigator.userAgent;
+    var list = document.createElement('div');
+    list.style.cssText = 'white-space:pre-wrap;word-break:break-all';
+    list.textContent = errors.length ? errors.join('\n\n') : '(未捕获到 JS 错误：可能是桥接调用无响应)';
+    var button = document.createElement('button');
+    button.textContent = '重新加载';
+    button.style.cssText = 'margin-top:16px;padding:8px 16px;border-radius:8px;border:0;background:#fe7971;color:#101014;font-weight:700';
+    button.onclick = function () { location.reload(); };
+    box.appendChild(title);
+    box.appendChild(meta);
+    box.appendChild(list);
+    box.appendChild(button);
+    document.body.appendChild(box);
+  }
+  setTimeout(showPanel, 8000);
+})();
+</script>
+"""
