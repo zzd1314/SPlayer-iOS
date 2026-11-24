@@ -46,7 +46,19 @@ jobs:
 
       - name: Build debug APK
         working-directory: android
-        run: gradle :app:assembleDebug --no-daemon --stacktrace
+        run: gradle :app:assembleDebug --no-daemon --stacktrace 2>&1 | tee ../build.log
+
+      - name: Publish build log on failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tail -n 200 build.log || true
+          if gh release view ci-logs >/dev/null 2>&1; then
+            gh release upload ci-logs build.log --clobber
+          else
+            gh release create ci-logs build.log --target "$GITHUB_SHA" --title "CI build logs" --notes "构建失败日志（自动上传）"
+          fi
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
