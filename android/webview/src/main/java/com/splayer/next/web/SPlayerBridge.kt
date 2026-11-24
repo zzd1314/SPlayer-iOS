@@ -48,23 +48,31 @@ class SPlayerBridge(private val host: WebHostActivity, private val context: Cont
 
     /** 返回调用结果给渲染层 */
     private fun resolve(callId: String, ok: Boolean, json: String?, error: Throwable?) {
+        // 必须用 JSONObject.quote 转成带引号的 JS 字面量：
+        // 直接 toString 会生成 __splayerResolve(c1, ...)，注入脚本抛 ReferenceError
+        // （WebView 中表现为无文件名的 "Script error."），Promise 永不 resolve，启动层卡死
+        val callIdJs = org.json.JSONObject.quote(callId)
         mainHandler.post {
             val errJson = error?.let { Json.write(mapOf("message" to (it.message ?: "bridge error"))) }
-            webView().evaluateJavascript(
-                "window.__splayerResolve(${org.json.JSONTokener(callId).nextValue()}," +
-                    "$ok, ${json ?: "null"}, ${errJson ?: "null"});",
-                null
-            )
+            runCatching {
+                webView().evaluateJavascript(
+                    "window.__splayerResolve($callIdJs, $ok, ${json ?: "null"}, ${errJson ?: "null"});",
+                    null
+                )
+            }
         }
     }
 
     /** 向渲染层推送事件（channel 与 preload subscribe 命名一致） */
     fun pushEvent(channel: String, payloadJson: String) {
+        val channelJs = org.json.JSONObject.quote(channel)
         mainHandler.post {
-            webView().evaluateJavascript(
-                "window.__splayerDispatch(${org.json.JSONTokener(channel).nextValue()}, $payloadJson);",
-                null
-            )
+            runCatching {
+                webView().evaluateJavascript(
+                    "window.__splayerDispatch($channelJs, $payloadJson);",
+                    null
+                )
+            }
         }
     }
 

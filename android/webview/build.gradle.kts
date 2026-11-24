@@ -12,8 +12,8 @@ android {
         applicationId = "com.splayer.next"
         minSdk = 26
         targetSdk = 35
-        versionCode = 104
-        versionName = "1.1.3"
+        versionCode = 105
+        versionName = "1.1.4"
     }
 
     // 固定签名：早期每个 CI runner 都会随机生成 debug keystore，导致新包无法覆盖安装（签名冲突）
