@@ -107,14 +107,13 @@ fun SectionHeader(
 /** 胶囊选择器 */
 @Composable
 fun ChoiceChip(
-    text: String,
+    label: String,
     selected: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    onClick: () -> Unit
 ) {
     val palette = LocalPalette.current
     Box(
-        modifier = modifier
+        modifier = Modifier
             .clip(CircleShape)
             .background(if (selected) palette.accent else palette.panel)
             .border(
@@ -126,7 +125,7 @@ fun ChoiceChip(
             .padding(horizontal = 16.dp, vertical = 8.dp)
     ) {
         Text(
-            text = text,
+            text = label,
             color = if (selected) palette.onAccent else palette.textSecondary,
             fontSize = 13.sp,
             fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal

@@ -286,6 +286,9 @@ object PlayerController {
         updateLyricIndex()
     }
 
+    /** 进度条拖拽得到的是比例换算后的 Float 毫秒，这里统一转换 */
+    fun seekTo(positionMs: Float) = seekTo(positionMs.toLong())
+
     fun setRepeatMode(mode: Int) {
         repeatMode = mode.coerceIn(0, 2)
         AppSettings.setRepeatMode(repeatMode)
