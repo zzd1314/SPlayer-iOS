@@ -132,6 +132,7 @@ private fun AppShell(dark: Boolean) {
     var playingMv by remember { mutableStateOf<MvItem?>(null) }
     var showPodcast by remember { mutableStateOf(false) }
     var podcastRadio by remember { mutableStateOf<DjRadio?>(null) }
+    var showServers by remember { mutableStateOf(false) }
 
     val detailOpen = detailPlaylist != null || detailArtist != null ||
         detailAlbum != null || commentSong != null || showMvList || showPodcast
@@ -314,7 +315,15 @@ private fun AppShell(dark: Boolean) {
         AnimatedVisibility(visible = showSettings) {
             SettingsScreen(
                 onBack = { showSettings = false },
-                onOpenLogin = { showLogin = true }
+                onOpenLogin = { showLogin = true },
+                onOpenServers = { showServers = true }
+            )
+        }
+
+        AnimatedVisibility(visible = showServers) {
+            ServersScreen(
+                onBack = { showServers = false },
+                onPlay = { list, index -> PlayerController.play(list, index) }
             )
         }
 

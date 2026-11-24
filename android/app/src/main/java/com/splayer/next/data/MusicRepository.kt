@@ -66,6 +66,8 @@ object MusicRepository {
 
     suspend fun lyric(songId: String): Lyric {
         if (songId.startsWith("demo-") || songId.startsWith("local-")) return Lyric()
+        // 流媒体服务器曲目没有网易云歌词，直接返回空，避免无意义的请求
+        if (songId.startsWith("sub-") || songId.startsWith("jf-")) return Lyric()
         return runCatching { NetEaseApi.lyric(songId) }.getOrDefault(Lyric())
     }
 

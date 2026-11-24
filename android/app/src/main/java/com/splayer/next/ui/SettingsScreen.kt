@@ -58,6 +58,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.Coil
 import com.splayer.next.data.AppSettings
+import com.splayer.next.data.ServerStore
 import com.splayer.next.ui.theme.LocalPalette
 import com.splayer.next.ui.theme.accentPresets
 import com.splayer.next.ui.theme.parseHexColor
@@ -82,7 +83,8 @@ private enum class SettingsCategory(
 @Composable
 fun SettingsScreen(
     onBack: () -> Unit,
-    onOpenLogin: () -> Unit
+    onOpenLogin: () -> Unit,
+    onOpenServers: () -> Unit
 ) {
     val palette = LocalPalette.current
     var category by remember { mutableStateOf<SettingsCategory?>(null) }
@@ -109,7 +111,8 @@ fun SettingsScreen(
             SettingsHeader(title = selected.title, onBack = { category = null })
             CategoryContent(
                 category = selected,
-                onOpenLogin = onOpenLogin
+                onOpenLogin = onOpenLogin,
+                onOpenServers = onOpenServers
             )
         }
     }
@@ -190,7 +193,7 @@ private fun SettingsHome(onBack: () -> Unit, onSelect: (SettingsCategory) -> Uni
                             fontWeight = FontWeight.SemiBold
                         )
                         Text(
-                            text = "Android 移植版 v0.5.0",
+                            text = "Android 移植版 v0.6.0",
                             color = palette.textTertiary,
                             fontSize = 11.sp
                         )
@@ -251,7 +254,8 @@ private fun SettingsHome(onBack: () -> Unit, onSelect: (SettingsCategory) -> Uni
 @Composable
 private fun CategoryContent(
     category: SettingsCategory,
-    onOpenLogin: () -> Unit
+    onOpenLogin: () -> Unit,
+    onOpenServers: () -> Unit
 ) {
     val context = LocalContext.current
     val palette = LocalPalette.current
@@ -442,6 +446,17 @@ private fun CategoryContent(
             }
 
             SettingsCategory.SERVICE -> {
+                SettingsGroup("流媒体服务器") {
+                    SettingRow(
+                        title = "流媒体服务器",
+                        subtitle = if (ServerStore.servers.isEmpty()) {
+                            "Subsonic / Navidrome / Jellyfin / Emby"
+                        } else {
+                            "已添加 ${ServerStore.servers.size} 台服务器"
+                        },
+                        onClick = onOpenServers
+                    )
+                }
                 SettingsGroup("网易云账号") {
                     SettingRow(
                         title = if (AppSettings.isLoggedIn) {
@@ -510,7 +525,7 @@ private fun CategoryContent(
 
             SettingsCategory.ABOUT -> {
                 SettingsGroup("版本信息") {
-                    SettingRow(title = "版本", subtitle = "0.5.0 (versionCode 5)")
+                    SettingRow(title = "版本", subtitle = "0.6.0 (versionCode 6)")
                     DividerLine()
                     SettingRow(title = "开源协议", subtitle = "AGPL-3.0")
                 }
