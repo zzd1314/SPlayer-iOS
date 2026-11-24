@@ -46,40 +46,58 @@ jobs:
 
       - name: Build debug APK
         working-directory: android
-        run: gradle :app:assembleDebug --no-daemon --stacktrace 2>&1 | tee ../build.log
+        run: |
+          set -o pipefail
+          gradle :app:assembleDebug --no-daemon --stacktrace 2>&1 | tee ../build.log
 
-      - name: Upload build log
+      - name: Collect build info
+        if: always()
+        run: |
+          {
+            echo ""
+            echo "=== gradle version ==="
+            gradle --version 2>&1 | head -n 12 || true
+            echo "=== apk files ==="
+            find . -name "*.apk" -print 2>/dev/null || true
+            echo "=== build outputs tree ==="
+            ls -R android/app/build/outputs 2>/dev/null || true
+            echo "=== android/app/build top ==="
+            ls android/app/build 2>/dev/null || true
+          } >> build.log 2>&1 || true
+          echo "log lines: $(wc -l < build.log)"
+
+      - name: Publish build log to ci-logs branch
         if: always()
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          {
-            echo "=== apk files ==="
-            find . -name "*.apk" -print 2>/dev/null || true
-            echo "=== build outputs ==="
-            ls -R android/app/build/outputs 2>/dev/null || true
-            echo "=== tail of build.log ==="
-            tail -n 80 build.log 2>/dev/null || true
-          } >> build.log
-          if gh release view ci-logs >/dev/null 2>&1; then
-            gh release upload ci-logs build.log --clobber
-          else
-            gh release create ci-logs build.log --target "$GITHUB_SHA" --title "CI build logs" --notes "构建日志（自动上传）"
-          fi
+          cp build.log ci-build.log
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git checkout -B ci-logs
+          git add -f ci-build.log
+          git commit -m "ci: build log for ${GITHUB_SHA}" || true
+          git push -f "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" ci-logs
 
       - name: Upload APK artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: splayer-next-android-debug
           path: android/app/build/outputs/apk/debug/*.apk
-          if-no-files-found: error
+          if-no-files-found: warn
 
       - name: Publish GitHub Release
+        if: success()
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG=android-v0.3.0
-          APK=$(ls android/app/build/outputs/apk/debug/*.apk | head -n1)
+          APK=$(find android/app/build/outputs/apk/debug -name "*.apk" | head -n1)
+          if [ -z "$APK" ]; then
+            echo "未找到 APK，终止发布"
+            exit 1
+          fi
           cp "$APK" splayer-next-android-v0.3.0-debug.apk
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" splayer-next-android-v0.3.0-debug.apk --clobber
