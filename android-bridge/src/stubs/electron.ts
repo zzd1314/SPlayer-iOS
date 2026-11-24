@@ -1,5 +1,13 @@
 /** Electron 桩：仅满足类型层面的导入，运行时不会触达桌面专属能力 */
-export const app = { getPath: () => '', getVersion: () => '0.0.0' }
+export const app = {
+  getPath: () => '',
+  getVersion: () => '0.0.0',
+  // 上游 core/request 在模块加载时就注册 before-quit 钩子；
+  // WebView 无退出事件，桩必须提供可调用的注册函数，否则整个 bundle 加载即抛错
+  once: () => undefined,
+  on: () => undefined,
+  off: () => undefined,
+}
 export const session = { defaultSession: {} }
 export const BrowserWindow = class {}
 export const ipcMain = { handle: () => undefined, on: () => undefined }

@@ -1,8 +1,11 @@
 package com.splayer.next.web.api
 
+import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.zip.GZIPInputStream
+import java.util.zip.InflaterInputStream
 
 /**
  * 通用 HTTP 代理：为 WebView 内的网易云加密层转发请求（绕过 CORS）。
@@ -23,11 +26,18 @@ object BridgeHttp {
             conn.connectTimeout = 12_000
             conn.readTimeout = 30_000
             conn.instanceFollowRedirects = true
-            headers.forEach { (k, v) -> conn.setRequestProperty(k.toString(), v?.toString()) }
+            var hasContentType = false
+            headers.forEach { (k, v) ->
+                val name = k.toString()
+                if (name.equals("content-type", true)) hasContentType = true
+                conn.setRequestProperty(name, v?.toString())
+            }
             if (method != "GET" && body.isNotEmpty()) {
                 conn.doOutput = true
                 val bytes = body.toByteArray(Charsets.UTF_8)
-                conn.setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
+                if (!hasContentType) {
+                    conn.setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
+                }
                 conn.setFixedLengthStreamingMode(bytes.size)
                 conn.outputStream.use { it.write(bytes) }
             }
@@ -36,6 +46,9 @@ object BridgeHttp {
                 val stream = if (code in 200..299) conn.inputStream else conn.errorStream
                 val out = ByteArrayOutputStream()
                 stream?.use { it.copyTo(out, 64 * 1024) }
+                // 网易云客户端会带 Accept-Encoding: gzip,deflate，
+                // HttpURLConnection 不会自动解压，必须自行处理后才能按 JSON 解析
+                val decoded = decodeBody(out.toByteArray(), conn.contentEncoding)
                 val setCookies = conn.headerFields
                     ?.filterKeys { it != null && it.equals("set-cookie", true) }
                     ?.values
@@ -51,7 +64,7 @@ object BridgeHttp {
                     "status" to code,
                     "headers" to headerMap,
                     "setCookie" to setCookies,
-                    "bodyBase64" to encodeBase64(out.toByteArray()),
+                    "bodyBase64" to encodeBase64(decoded),
                 )
             } finally {
                 conn.disconnect()
@@ -63,6 +76,25 @@ object BridgeHttp {
                 "setCookie" to emptyList<String>(),
                 "bodyBase64" to "",
             )
+        }
+    }
+
+    /** 按 Content-Encoding 解压；也兼容服务端未声明但实际是 gzip 的情况 */
+    private fun decodeBody(bytes: ByteArray, contentEncoding: String?): ByteArray {
+        if (bytes.isEmpty()) return bytes
+        val enc = contentEncoding?.lowercase().orEmpty()
+        val gzipMagic = bytes.size > 2 &&
+            bytes[0] == 0x1f.toByte() && bytes[1] == 0x8b.toByte()
+        return try {
+            when {
+                enc.contains("gzip") || (enc.isEmpty() && gzipMagic) ->
+                    GZIPInputStream(ByteArrayInputStream(bytes)).use { it.readBytes() }
+                enc.contains("deflate") ->
+                    InflaterInputStream(ByteArrayInputStream(bytes)).use { it.readBytes() }
+                else -> bytes
+            }
+        } catch (e: Exception) {
+            bytes
         }
     }
 

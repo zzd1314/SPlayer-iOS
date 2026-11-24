@@ -158,6 +158,12 @@ jobs:
           {
             echo "SPlayer Next Android v$VERSION —— 基于上游 SPlayer-Next 原版 Vue 前端的 WebView 移植："
             echo ''
+            echo '**v1.1.6 修复（扫码登录二维码空白 / 设置弹窗排版错乱）**'
+            echo '- 二维码空白根因：网易云 API bundle 加载时调用了 Electron 桩上不存在的 app.once("before-quit")，导致 netease-api.js 整体加载即抛 TypeError，所有在线接口（含 login_qr_key）不可用。已为桩补上 once/on/off。'
+            echo '- 第二个根因：bridge.js 从 window.NeteaseBridge 取模块，但 bundle 以 dynamic import 加载时该变量只存在于模块作用域，实际入口是 globalThis.__Netease。已改为读取 __Netease，并在缺失时给出明确错误。'
+            echo '- 设置弹窗排版：上游左栏固定 280px，手机宽度下把右侧内容挤成竖排；新增仅在 ≤720px 生效的样式，把左栏收窄到 148px 并压缩内边距。'
+            echo '- HTTP 代理：网易云请求显式带 Accept-Encoding: gzip,deflate 时，原生 HttpURLConnection 不会自动解压，已补上 gzip/deflate 解压与 Content-Type 保留。'
+            echo ''
             echo '**v1.1.5 修复（真机启动仍停诊断面板）**'
             echo '- 根因：桥接调用跑在 Dispatchers.IO 协程（DefaultDispatcher-worker）上，而 Media3 ExoPlayer 强制要求主线程访问，initPlayer() 中首次读取播放器状态就抛 Player is accessed on the wrong thread，启动流程中断。'
             echo '- 修复：window.api.player.* 全部调用统一切到主线程同步执行（含 getStatus / getVolume 等读取），并加 10s 超时保护。'

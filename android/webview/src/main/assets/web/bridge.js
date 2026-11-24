@@ -11,6 +11,21 @@
   let seq = 0
   const listeners = new Map()
 
+  // 窄屏适配：上游设置弹窗左栏固定 280px，手机宽度下会把右栏挤成竖排文字
+  const mobileCss = `
+@media (max-width: 720px) {
+  [role="dialog"] .w-70 { width: 148px !important; padding: 12px 8px !important; }
+  [role="dialog"] .w-70 .text-2xl { font-size: 16px !important; line-height: 1.35 !important; }
+  [role="dialog"] .w-70 .text-sm { font-size: 11px !important; margin-bottom: 10px !important; }
+  [role="dialog"] .w-70 .px-3 { padding-left: 6px !important; padding-right: 6px !important; }
+  [role="dialog"] .flex-1.overflow-y-auto.py-6.px-8 { padding: 16px 14px !important; }
+}
+`
+  const mobileStyle = document.createElement('style')
+  mobileStyle.id = 'splayer-mobile-layout'
+  mobileStyle.textContent = mobileCss
+  ;(document.head || document.documentElement).appendChild(mobileStyle)
+
   window.__splayerResolve = (callId, ok, payload, error) => {
     const p = pending.get(callId)
     if (!p) return
@@ -116,7 +131,10 @@
   const loadNetease = () => {
     if (!neteasePromise) {
       neteasePromise = import('/assets/netease-api.js').then(() => {
-        const b = window.NeteaseBridge
+        // entry.ts 通过 globalThis.__Netease 暴露接口；dynamic import 下 esbuild
+        // 的 global-name 变量只存在于模块作用域，window.NeteaseBridge 不可见
+        const b = window.__Netease || window.NeteaseBridge
+        if (!b) throw new Error('netease-api.js 未暴露 __Netease')
         return {
           call: async (platform, name, params) => {
             if (platform !== 'netease') {
