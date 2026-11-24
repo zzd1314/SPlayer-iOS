@@ -278,6 +278,143 @@ object NetEaseApi {
         mvFrom(root.optJSONObject("data"))
     }
 
+    // MARK: - 播客 / 电台
+
+    /** 推荐电台节目（匿名可用） */
+    suspend fun djRecommendPrograms(limit: Int = 20): List<DjProgram> = withContext(Dispatchers.IO) {
+        val root = JSONObject(get("$BASE/api/dj/program/recommend?limit=$limit&offset=0"))
+        val array = root.optJSONArray("programs")
+            ?: root.optJSONArray("data")
+            ?: root.optJSONArray("result")
+            ?: return@withContext emptyList()
+        (0 until array.length()).mapNotNull { djProgramFrom(array.optJSONObject(it)) }
+    }
+
+    /** 热门电台：从推荐节目中提取并去重，避免使用需要登录的接口 */
+    suspend fun djRadios(limit: Int = 12): List<DjRadio> = withContext(Dispatchers.IO) {
+        val programs = djRecommendPrograms(limit = 40)
+        val seen = HashSet<String>()
+        programs.mapNotNull { program ->
+            val radioId = program.radioId
+            if (radioId.isBlank() || !seen.add(radioId)) return@mapNotNull null
+            DjRadio(
+                id = radioId,
+                name = program.radioName.ifBlank { "播客电台" },
+                djName = program.djName,
+                coverUrl = program.coverUrl,
+                tint = program.tint
+            )
+        }.take(limit)
+    }
+
+    /** 电台详情 + 节目列表 */
+    suspend fun djRadioDetail(id: String, limit: Int = 30): DjRadioDetail? = withContext(Dispatchers.IO) {
+        runCatching {
+            val root = JSONObject(get("$BASE/api/djradio/detail?id=$id"))
+            val radioObj = root.optJSONObject("data") ?: root.optJSONObject("djRadio") ?: root
+            val numericId = id.toLongOrNull() ?: 0L
+            val radio = DjRadio(
+                id = id,
+                name = radioObj.optString("name").ifBlank { "播客电台" },
+                djName = radioObj.optJSONObject("dj")?.optString("nickname").orEmpty(),
+                coverUrl = httpsUrl(radioObj.optString("picUrl")),
+                description = radioObj.optString("desc").ifBlank {
+                    radioObj.optString("description")
+                },
+                programCount = radioObj.optInt("programCount"),
+                subscriberCount = radioObj.optLong("subCount"),
+                tint = tintForId(numericId)
+            )
+            DjRadioDetail(radio = radio, programs = djPrograms(id, limit))
+        }.getOrNull()
+    }
+
+    /** 电台节目列表 */
+    suspend fun djPrograms(radioId: String, limit: Int = 30): List<DjProgram> = withContext(Dispatchers.IO) {
+        runCatching {
+            val root = JSONObject(
+                get("$BASE/api/dj/program/byradio?radioId=$radioId&limit=$limit&offset=0&asc=false")
+            )
+            val array = root.optJSONArray("programs") ?: return@runCatching emptyList()
+            (0 until array.length()).mapNotNull { djProgramFrom(array.optJSONObject(it)) }
+        }.getOrDefault(emptyList())
+    }
+
+    /** 单个节目详情 */
+    suspend fun djProgramDetail(id: String): DjProgram? = withContext(Dispatchers.IO) {
+        runCatching {
+            val root = JSONObject(get("$BASE/api/dj/program/detail?id=$id"))
+            djProgramFrom(root.optJSONObject("program") ?: root.optJSONObject("data"))
+        }.getOrNull()
+    }
+
+    // MARK: - 音质
+
+    private val urlCache = java.util.concurrent.ConcurrentHashMap<String, String>()
+
+    /**
+     * 按音质获取播放地址。level: standard / higher / exhigh。
+     * 未登录或版权受限时返回 null，由上层回退到外链接口。
+     */
+    suspend fun songPlayUrl(songId: String, level: String): String? = withContext(Dispatchers.IO) {
+        if (songId.startsWith("demo-") || songId.startsWith("local-") || songId.startsWith("dj-")) {
+            return@withContext null
+        }
+        if (songId.toLongOrNull() == null) return@withContext null
+        val cacheKey = "$songId@$level"
+        urlCache[cacheKey]?.let { return@withContext it }
+        runCatching {
+            val body = get(
+                "$BASE/api/song/enhance/player/url/v1?id=$songId&level=$level&encodeType=mp3"
+            )
+            val raw = JSONObject(body).optJSONArray("data")
+                ?.optJSONObject(0)
+                ?.optString("url")
+                ?.ifBlank { null }
+                ?: return@runCatching null
+            val url = httpsUrl(raw) ?: raw
+            urlCache[cacheKey] = url
+            url
+        }.getOrNull()
+    }
+
+    // MARK: - 二维码登录
+
+    /** 创建二维码登录会话 */
+    suspend fun createQrLogin(): QrCodeLogin? = withContext(Dispatchers.IO) {
+        runCatching {
+            val root = JSONObject(get("$BASE/api/login/qrcode/unikey?type=1"))
+            if (root.optInt("code") != 200) return@runCatching null
+            val key = root.optString("unikey").ifBlank { return@runCatching null }
+            QrCodeLogin(
+                key = key,
+                url = "https://music.163.com/login?codekey=$key"
+            )
+        }.getOrNull()
+    }
+
+    /** 轮询扫码状态：800 过期 / 801 待扫码 / 802 已扫码 / 803 成功 */
+    suspend fun checkQrLogin(key: String): QrLoginResult = withContext(Dispatchers.IO) {
+        runCatching {
+            val headers = mutableListOf<String>()
+            val body = get("$BASE/api/login/qrcode/client/login?key=$key&type=1", cookieSink = headers)
+            val code = JSONObject(body).optInt("code")
+            val cookie = headers.firstNotNullOfOrNull { line ->
+                Regex("MUSIC_U=([^;\\s]+)").find(line)?.groupValues?.get(1)
+                    ?.let { "MUSIC_U=$it" }
+            }
+            QrLoginResult(code = code, message = qrMessage(code), cookie = cookie)
+        }.getOrDefault(QrLoginResult(code = -1, message = "网络异常，请重试"))
+    }
+
+    private fun qrMessage(code: Int): String = when (code) {
+        800 -> "二维码已过期，请刷新"
+        801 -> "等待扫码"
+        802 -> "已扫码，请在手机上确认"
+        803 -> "登录成功"
+        else -> "等待扫码"
+    }
+
     /** MV 播放地址（受版权限制时可能为空） */
     suspend fun mvUrl(id: String): String? = withContext(Dispatchers.IO) {
         runCatching {
@@ -356,6 +493,34 @@ object NetEaseApi {
         )
     }
 
+    private fun djProgramFrom(json: JSONObject?): DjProgram? {
+        if (json == null) return null
+        val id = json.optLong("id").takeIf { it > 0L } ?: return null
+        val radio = json.optJSONObject("radio")
+        val audio = songFrom(json.optJSONObject("mainSong") ?: json.optJSONObject("song"))
+        val radioId = radio?.optLong("id")?.takeIf { it > 0L }?.toString().orEmpty()
+        val radioName = radio?.optString("name").orEmpty()
+        val djName = radio?.optJSONObject("dj")?.optString("nickname")
+            ?: json.optJSONObject("dj")?.optString("nickname").orEmpty()
+        val cover = httpsUrl(json.optString("coverUrl").ifBlank { json.optString("cover") })
+            ?: httpsUrl(radio?.optString("picUrl"))
+            ?: audio?.coverUrl
+        return DjProgram(
+            id = id.toString(),
+            name = json.optString("name").ifBlank { audio?.title ?: "电台节目" },
+            radioId = radioId,
+            radioName = radioName,
+            djName = djName,
+            coverUrl = cover,
+            durationMs = json.optLong("duration").takeIf { it > 0L } ?: audio?.durationMs ?: 0L,
+            listenerCount = json.optLong("listenerCount"),
+            description = json.optString("description"),
+            createTime = json.optLong("createTime"),
+            tint = tintForId(id),
+            audio = audio
+        )
+    }
+
     /** 评论时间：yyyy-MM-dd，异常时间戳返回空串 */
     private fun formatCommentTime(timestamp: Long): String {
         if (timestamp <= 0L) return ""
@@ -399,7 +564,7 @@ object NetEaseApi {
 
     // MARK: - HTTP
 
-    private fun get(url: String): String {
+    private fun get(url: String, cookieSink: MutableList<String>? = null): String {
         val connection = URL(url).openConnection() as HttpURLConnection
         connection.connectTimeout = 10_000
         connection.readTimeout = 10_000
@@ -413,12 +578,30 @@ object NetEaseApi {
         try {
             val code = connection.responseCode
             if (code !in 200..299) throw IOException("HTTP $code")
+            cookieSink?.let { sink ->
+                connection.headerFields?.forEach { (name, values) ->
+                    if (name.equals("Set-Cookie", ignoreCase = true)) sink.addAll(values)
+                }
+            }
             return connection.inputStream.bufferedReader().use { it.readText() }
         } finally {
             connection.disconnect()
         }
     }
 }
+
+/** 二维码登录会话 */
+data class QrCodeLogin(
+    val key: String,
+    val url: String
+)
+
+/** 二维码扫码状态（code 800/801/802/803） */
+data class QrLoginResult(
+    val code: Int,
+    val message: String,
+    val cookie: String? = null
+)
 
 /** 歌单详情：歌单元信息 + 曲目列表 */
 data class PlaylistWithSongs(

@@ -33,6 +33,7 @@ import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Podcasts
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
@@ -392,7 +393,8 @@ fun DiscoverScreen(
     onOpenPlaylist: (Playlist) -> Unit,
     onOpenSearch: () -> Unit,
     onOpenMv: (MvItem) -> Unit,
-    onOpenMvList: () -> Unit
+    onOpenMvList: () -> Unit,
+    onOpenPodcast: () -> Unit
 ) {
     val palette = LocalPalette.current
     var tops by remember { mutableStateOf<List<Playlist>>(emptyList()) }
@@ -452,6 +454,52 @@ fun DiscoverScreen(
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Medium,
                     modifier = Modifier.pressable(onOpenSearch)
+                )
+            }
+        }
+        item {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(palette.field)
+                    .pressable(onOpenPodcast)
+                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    Modifier
+                        .size(38.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(palette.accentSoft),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.Filled.Podcasts,
+                        contentDescription = null,
+                        tint = palette.accent,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        text = "播客电台",
+                        color = palette.textPrimary,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        text = "电台节目、有声内容，随时收听",
+                        color = palette.textTertiary,
+                        fontSize = 11.sp
+                    )
+                }
+                Icon(
+                    Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    contentDescription = null,
+                    tint = palette.textTertiary,
+                    modifier = Modifier.size(18.dp)
                 )
             }
         }

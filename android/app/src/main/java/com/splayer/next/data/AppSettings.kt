@@ -62,6 +62,10 @@ object AppSettings {
     var lyricFontScale by mutableStateOf(1f)
         private set
 
+    /** 音质：standard 标准 / higher HQ 较高 / exhigh SQ 极高 */
+    var audioQuality by mutableStateOf("higher")
+        private set
+
     // MARK: - 账号
 
     var cookie by mutableStateOf("")
@@ -111,6 +115,7 @@ object AppSettings {
         showTranslation = store.getBoolean("show_translation", true)
         lyricAlignCenter = store.getBoolean("lyric_align_center", true)
         lyricFontScale = store.getFloat("lyric_font_scale", 1f).coerceIn(0.8f, 1.6f)
+        audioQuality = store.getString("audio_quality", "higher") ?: "higher"
 
         cookie = store.getString("cookie", "") ?: ""
         nickname = store.getString("nickname", "") ?: ""
@@ -206,6 +211,15 @@ object AppSettings {
     fun setLyricFontScale(value: Float) {
         lyricFontScale = value.coerceIn(0.8f, 1.6f)
         prefs.edit("lyric_font_scale", lyricFontScale)
+    }
+
+    @JvmName("applyAudioQuality")
+    fun setAudioQuality(value: String) {
+        audioQuality = when (value) {
+            "standard", "higher", "exhigh" -> value
+            else -> "higher"
+        }
+        prefs.edit("audio_quality", audioQuality)
     }
 
     // MARK: - 账号

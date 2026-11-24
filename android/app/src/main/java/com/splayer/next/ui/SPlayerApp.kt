@@ -66,6 +66,7 @@ import androidx.core.view.WindowCompat
 import com.splayer.next.data.AppSettings
 import com.splayer.next.data.ArtistItem
 import com.splayer.next.data.CoverColorExtractor
+import com.splayer.next.data.DjRadio
 import com.splayer.next.data.MusicRepository
 import com.splayer.next.data.MvItem
 import com.splayer.next.data.Playlist
@@ -129,9 +130,11 @@ private fun AppShell(dark: Boolean) {
     var commentSong by remember { mutableStateOf<Song?>(null) }
     var showMvList by remember { mutableStateOf(false) }
     var playingMv by remember { mutableStateOf<MvItem?>(null) }
+    var showPodcast by remember { mutableStateOf(false) }
+    var podcastRadio by remember { mutableStateOf<DjRadio?>(null) }
 
     val detailOpen = detailPlaylist != null || detailArtist != null ||
-        detailAlbum != null || commentSong != null || showMvList
+        detailAlbum != null || commentSong != null || showMvList || showPodcast
 
     // 连接播放服务
     LaunchedEffect(Unit) {
@@ -188,7 +191,20 @@ private fun AppShell(dark: Boolean) {
                 val artistDetail = detailArtist
                 val albumDetail = detailAlbum
                 val comment = commentSong
+                val radio = podcastRadio
                 when {
+                    radio != null -> PodcastRadioScreen(
+                        radio = radio,
+                        onBack = { podcastRadio = null },
+                        onPlayPrograms = { list, index -> PlayerController.play(list, index) }
+                    )
+
+                    showPodcast -> PodcastScreen(
+                        onBack = { showPodcast = false },
+                        onOpenRadio = { podcastRadio = it },
+                        onPlayPrograms = { list, index -> PlayerController.play(list, index) }
+                    )
+
                     comment != null -> CommentScreen(
                         song = comment,
                         onBack = { commentSong = null }
@@ -235,7 +251,8 @@ private fun AppShell(dark: Boolean) {
                         onOpenPlaylist = { detailPlaylist = it },
                         onOpenSearch = { tab = 3 },
                         onOpenMv = { playingMv = it },
-                        onOpenMvList = { showMvList = true }
+                        onOpenMvList = { showMvList = true },
+                        onOpenPodcast = { showPodcast = true }
                     )
 
                     tab == 2 -> LibraryScreen(
@@ -269,6 +286,8 @@ private fun AppShell(dark: Boolean) {
                     detailAlbum = null
                     commentSong = null
                     showMvList = false
+                    showPodcast = false
+                    podcastRadio = null
                 }
             )
         }

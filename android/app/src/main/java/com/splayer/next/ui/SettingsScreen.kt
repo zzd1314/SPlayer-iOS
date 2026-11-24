@@ -190,7 +190,7 @@ private fun SettingsHome(onBack: () -> Unit, onSelect: (SettingsCategory) -> Uni
                             fontWeight = FontWeight.SemiBold
                         )
                         Text(
-                            text = "Android 移植版 v0.3.0",
+                            text = "Android 移植版 v0.5.0",
                             color = palette.textTertiary,
                             fontSize = 11.sp
                         )
@@ -296,6 +296,25 @@ private fun CategoryContent(
             }
 
             SettingsCategory.PLAYBACK -> {
+                SettingsGroup("音质") {
+                    PickerRow(
+                        options = listOf(
+                            "标准" to "standard",
+                            "HQ 较高" to "higher",
+                            "SQ 极高" to "exhigh"
+                        ),
+                        selected = AppSettings.audioQuality,
+                        onSelect = { AppSettings.setAudioQuality(it) }
+                    )
+                    DividerLine()
+                    Text(
+                        text = "高音质需要登录账号且曲目版权支持；解析失败时会自动回退标准音质。",
+                        color = palette.textTertiary,
+                        fontSize = 11.sp,
+                        lineHeight = 17.sp,
+                        modifier = Modifier.padding(14.dp)
+                    )
+                }
                 SettingsGroup("播放") {
                     SettingSwitchRow(
                         title = "封面取色",
@@ -491,7 +510,7 @@ private fun CategoryContent(
 
             SettingsCategory.ABOUT -> {
                 SettingsGroup("版本信息") {
-                    SettingRow(title = "版本", subtitle = "0.3.0 (versionCode 3)")
+                    SettingRow(title = "版本", subtitle = "0.5.0 (versionCode 5)")
                     DividerLine()
                     SettingRow(title = "开源协议", subtitle = "AGPL-3.0")
                 }

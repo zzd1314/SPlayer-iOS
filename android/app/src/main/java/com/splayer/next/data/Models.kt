@@ -73,6 +73,60 @@ data class MvItem(
     val playCountLabel: String get() = formatPlayCount(playCount)
 }
 
+/** 播客电台 */
+data class DjRadio(
+    val id: String,
+    val name: String,
+    val djName: String = "",
+    val coverUrl: String? = null,
+    val description: String = "",
+    val programCount: Int = 0,
+    val subscriberCount: Long = 0L,
+    val tint: Color = BrandAccent
+) {
+    val subscriberLabel: String
+        get() = if (subscriberCount > 0L) formatPlayCount(subscriberCount) + "订阅" else "播客电台"
+}
+
+/** 电台节目（播客单集） */
+data class DjProgram(
+    val id: String,
+    val name: String,
+    val radioId: String = "",
+    val radioName: String = "",
+    val djName: String = "",
+    val coverUrl: String? = null,
+    val durationMs: Long = 0L,
+    val listenerCount: Long = 0L,
+    val description: String = "",
+    val createTime: Long = 0L,
+    val tint: Color = BrandAccent,
+    /** 节目主音频对应的歌曲，用于播放与下载 */
+    val audio: Song? = null
+) {
+    val durationLabel: String get() = formatDuration(durationMs)
+
+    val listenerLabel: String
+        get() = if (listenerCount > 0L) formatPlayCount(listenerCount) + "播放" else ""
+
+    /** 转为播放器可识别的歌曲；缺少主音频时退化为仅展示条目 */
+    fun toSong(): Song = audio ?: Song(
+        id = "dj-$id",
+        title = name,
+        artist = djName.ifBlank { radioName }.ifBlank { "播客" },
+        album = radioName,
+        durationMs = durationMs,
+        coverUrl = coverUrl,
+        tint = tint
+    )
+}
+
+/** 电台详情：电台信息 + 节目列表 */
+data class DjRadioDetail(
+    val radio: DjRadio,
+    val programs: List<DjProgram> = emptyList()
+)
+
 /** 歌单 / 专辑 / 排行榜通用封面条目 */
 data class Playlist(
     val id: String,

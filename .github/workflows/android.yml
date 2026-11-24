@@ -94,18 +94,18 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TAG=android-v0.4.0
+          TAG=android-v0.5.0
           APK=$(find android/app/build/outputs/apk/debug -name "*.apk" | head -n1)
           if [ -z "$APK" ]; then
             echo "未找到 APK，终止发布"
             exit 1
           fi
-          cp "$APK" splayer-next-android-v0.4.0-debug.apk
+          cp "$APK" splayer-next-android-v0.5.0-debug.apk
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" splayer-next-android-v0.4.0-debug.apk --clobber
+            gh release upload "$TAG" splayer-next-android-v0.5.0-debug.apk --clobber
           else
-            gh release create "$TAG" splayer-next-android-v0.4.0-debug.apk \
+            gh release create "$TAG" splayer-next-android-v0.5.0-debug.apk \
               --target "$GITHUB_SHA" \
-              --title "SPlayer Next Android v0.4.0" \
-              --notes "SPlayer Next 安卓端 v0.4.0（Debug APK）：新增歌曲评论页（精彩评论 / 最新评论）、歌手详情页（热门单曲 + 专辑列表）、专辑详情页（简介与曲目）、MV 精选列表与在线视频播放（Media3 PlayerView）、离线下载管理（下载 / 离线播放 / 删除）、播放页一键进入评论与专辑。延续 v0.3.0 的主题系统、全屏播放、设置中心、Cookie 登录与本地音乐。"
+              --title "SPlayer Next Android v0.5.0" \
+              --notes "SPlayer Next 安卓端 v0.5.0（Debug APK）：新增播客电台（推荐节目、热门电台、电台详情与节目播放）、音质切换（标准 / HQ 较高 / SQ 极高，自动回退）、网易云 App 扫码登录（二维码轮询与 Cookie 自动保存）。延续 v0.4.0 的评论、歌手、专辑、MV 与离线下载，以及主题系统、全屏播放、设置中心与本地音乐。"
           fi

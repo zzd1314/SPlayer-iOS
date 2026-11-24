@@ -12,8 +12,8 @@ android {
         applicationId = "com.splayer.next"
         minSdk = 26
         targetSdk = 35
-        versionCode = 4
-        versionName = "0.4.0"
+        versionCode = 5
+        versionName = "0.5.0"
         vectorDrawables { useSupportLibrary = true }
     }
 
@@ -65,6 +65,7 @@ dependencies {
     implementation("androidx.media3:media3-ui:1.5.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
     implementation("io.coil-kt:coil-compose:2.7.0")
+    implementation("com.google.zxing:core:3.5.3")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
 }

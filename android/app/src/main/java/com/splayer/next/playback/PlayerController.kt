@@ -85,6 +85,8 @@ object PlayerController {
         private set
 
     private var lyricJob: Job? = null
+    private var playJob: Job? = null
+    private var playToken = 0
     private var sleepJob: Job? = null
     private var sleepEndAt = 0L
     private var pauseAfterTrack = false
@@ -223,24 +225,66 @@ object PlayerController {
             appContext?.let { connect(it) }
             return
         }
-        active.setMediaItems(songs.map { it.toMediaItem() }, safeIndex, 0L)
-        active.prepare()
-        active.play()
+        val token = ++playToken
+        playJob?.cancel()
+        playJob = scope.launch {
+            // 先按当前音质解析首曲地址，失败自动回退外链
+            val first = songs[safeIndex]
+            val resolved = MusicRepository.songPlayUrl(first)
+            if (token != playToken) return@launch
+            val items = songs.map { it.toMediaItem() }.toMutableList()
+            if (!resolved.isNullOrBlank()) items[safeIndex] = first.toMediaItem(resolved)
+            active.setMediaItems(items, safeIndex, 0L)
+            active.prepare()
+            active.play()
+            resolveQueueQuality(active, songs, safeIndex, token)
+        }
+    }
+
+    /** 后台为后续曲目解析高音质地址，替换尚未播放的条目 */
+    private suspend fun resolveQueueQuality(
+        active: MediaController,
+        songs: List<Song>,
+        startIndex: Int,
+        token: Int
+    ) {
+        for (i in songs.indices) {
+            if (i == startIndex) continue
+            if (token != playToken) return
+            val song = songs[i]
+            if (DownloadStore.localPath(song.id) != null) continue
+            val url = MusicRepository.songPlayUrl(song) ?: continue
+            if (token != playToken) return
+            // 正在播放的条目不替换，避免打断当前音频
+            if (active.currentMediaItemIndex == i) continue
+            runCatching { active.replaceMediaItem(i, song.toMediaItem(url)) }
+        }
     }
 
     fun playAt(index: Int) {
         val active = controller ?: return
         if (index !in queue.indices) return
+        val song = queue[index]
         currentIndex = index
-        currentSong = queue[index]
+        currentSong = song
         positionMs = 0L
-        durationMs = queue[index].durationMs
+        durationMs = song.durationMs
         currentLyricIndex = -1
         errorText = null
-        AppSettings.addRecent(queue[index])
-        loadLyrics(queue[index])
-        active.seekToDefaultPosition(index)
-        active.play()
+        AppSettings.addRecent(song)
+        loadLyrics(song)
+        val token = ++playToken
+        playJob?.cancel()
+        playJob = scope.launch {
+            val resolved = MusicRepository.songPlayUrl(song)
+            if (token != playToken) return@launch
+            if (!resolved.isNullOrBlank() && active.currentMediaItemIndex == index) {
+                runCatching { active.replaceMediaItem(index, song.toMediaItem(resolved)) }
+            }
+            if (token != playToken) return@launch
+            active.seekToDefaultPosition(index)
+            active.play()
+        }
     }
 
     fun addToQueue(song: Song) {
@@ -420,12 +464,14 @@ object PlayerController {
         else -> Player.REPEAT_MODE_OFF
     }
 
-    private fun Song.toMediaItem(): MediaItem {
+    private fun Song.toMediaItem(resolvedUrl: String? = null): MediaItem {
         // 优先使用已下载的本地文件，实现离线播放
         val localPath = DownloadStore.localPath(id)
-        val uri = localPath?.let { "file://$it" } ?: streamUrl.ifBlank {
-            if (id.toLongOrNull() != null) NetEaseApi.streamUrl(id) else ""
-        }
+        val uri = localPath?.let { "file://$it" }
+            ?: resolvedUrl?.takeIf { it.isNotBlank() }
+            ?: streamUrl.ifBlank {
+                if (id.toLongOrNull() != null) NetEaseApi.streamUrl(id) else ""
+            }
         val artwork = coverUrl?.takeIf { it.isNotBlank() }
         val metadata = MediaMetadata.Builder()
             .setTitle(title)

@@ -93,4 +93,31 @@ object MusicRepository {
 
     suspend fun mvUrl(id: String): String? =
         runCatching { NetEaseApi.mvUrl(id) }.getOrNull()
+
+    // MARK: - 播客 / 音质 / 二维码登录
+
+    suspend fun djPrograms(): List<DjProgram> =
+        runCatching { NetEaseApi.djRecommendPrograms() }.getOrDefault(emptyList())
+
+    suspend fun djRadios(): List<DjRadio> =
+        runCatching { NetEaseApi.djRadios() }.getOrDefault(emptyList())
+
+    suspend fun djRadioDetail(id: String): DjRadioDetail? =
+        runCatching { NetEaseApi.djRadioDetail(id) }.getOrNull()
+
+    /** 按当前音质解析播放地址；失败或标准音质时使用歌曲自带的外链 */
+    suspend fun songPlayUrl(song: Song, level: String = AppSettings.audioQuality): String? {
+        if (level != "standard") {
+            val remote = runCatching { NetEaseApi.songPlayUrl(song.id, level) }.getOrNull()
+            if (!remote.isNullOrBlank()) return remote
+        }
+        return song.streamUrl.ifBlank { null }
+    }
+
+    suspend fun createQrLogin(): QrCodeLogin? =
+        runCatching { NetEaseApi.createQrLogin() }.getOrNull()
+
+    suspend fun checkQrLogin(key: String): QrLoginResult =
+        runCatching { NetEaseApi.checkQrLogin(key) }
+            .getOrDefault(QrLoginResult(code = -1, message = "网络异常，请重试"))
 }
