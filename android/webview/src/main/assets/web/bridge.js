@@ -23,10 +23,14 @@
   }
 
   window.__splayerDispatch = (channel, payload) => {
+    let data = payload
+    if (typeof payload === 'string') {
+      try { data = JSON.parse(payload) } catch (e) { data = payload }
+    }
     const set = listeners.get(channel)
     if (!set) return
     set.forEach((cb) => {
-      try { cb(payload) } catch (e) { console.warn('[bridge] listener error', channel, e) }
+      try { cb(data) } catch (e) { console.warn('[bridge] listener error', channel, e) }
     })
   }
 
@@ -169,12 +173,34 @@
     },
   }
 
+  /** 流媒体服务器 bundle（streaming-api.js）：复用上游主进程 streaming 服务层 */
+  let streamingPromise = null
+  const loadStreaming = () => {
+    if (!streamingPromise) {
+      streamingPromise = import('/assets/streaming-api.js').then(() => {
+        const b = window.StreamingBridge
+        b.setNativeCall((ns, method, args) => call(ns, method, args))
+        return b
+      }).catch((e) => { streamingPromise = null; throw e })
+    }
+    return streamingPromise
+  }
+
+  const streamingNs = new Proxy({}, {
+    get(_t, prop) {
+      if (typeof prop !== 'string' || prop === 'then' || prop === 'toJSON') return undefined
+      if (prop.startsWith('on')) return (cb) => subscribe('streaming', prop, cb)
+      return (...args) => loadStreaming().then((b) => b.handle(prop, args))
+    },
+  })
+
   window.api = new Proxy({}, {
     get(_t, ns) {
       if (typeof ns !== 'string' || ns === 'then' || ns === 'toJSON') return undefined
       if (ns === 'system') return systemNs
       if (ns === 'apis') return apisNs
       if (ns === 'lyrics') return lyricsNs
+      if (ns === 'streaming') return streamingNs
       return makeNs(ns)
     },
   })

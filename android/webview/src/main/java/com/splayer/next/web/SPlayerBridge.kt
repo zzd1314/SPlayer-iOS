@@ -82,4 +82,41 @@ class SPlayerBridge(private val host: WebHostActivity, private val context: Cont
     fun onHistoryChanged() = Unit
 
     private fun webView(): WebView = host.webView
+
+    companion object {
+        /** 供 LibraryStore 等无桥引用模块推送事件使用 */
+        @Volatile
+        var active: SPlayerBridge? = null
+            private set
+
+        /** BridgeRouter 初始化时注入当前桥实例 */
+        internal fun activate(bridge: SPlayerBridge?) {
+            active = bridge
+        }
+    }
+
+    /**
+     * SAF 目录选择（download.pickDir）：发起系统目录选择器并阻塞等待结果，
+     * 结果由 Activity 的 onDirectoryPicked 回填，超时 120s 视为取消。
+     */
+    fun requestPickDir(): String? {
+        val deferred = awaitPick()
+        host.launchDirectoryPicker()
+        return runCatching {
+            kotlinx.coroutines.runBlocking {
+                kotlinx.coroutines.withTimeoutOrNull(120_000) { deferred.await() }
+            }
+        }.getOrNull()
+    }
+
+    /** Activity 拿到 SAF 结果后回填 */
+    fun onDirectoryPicked(uri: String?) {
+        pendingPick?.complete(uri)
+        pendingPick = null
+    }
+
+    private var pendingPick: kotlinx.coroutines.CompletableDeferred<String?>? = null
+
+    internal fun awaitPick(): kotlinx.coroutines.CompletableDeferred<String?> =
+        kotlinx.coroutines.CompletableDeferred<String?>().also { pendingPick = it }
 }

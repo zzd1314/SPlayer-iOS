@@ -2,6 +2,7 @@ package com.splayer.next.web.playback
 
 import android.content.Context
 import android.content.Intent
+import android.media.Visualizer
 import android.os.Handler
 import android.os.Looper
 import androidx.media3.common.MediaItem
@@ -88,6 +89,7 @@ object PlaybackEngine {
     private val listener = object : Player.Listener {
         override fun onIsPlayingChanged(isPlaying: Boolean) {
             pushStatus()
+            setFftActive(isPlaying)
             if (isPlaying) mainHandler.postDelayed(positionTicker, POSITION_INTERVAL_MS)
         }
 
@@ -181,7 +183,7 @@ object PlaybackEngine {
             "getSelectedDeviceName" -> mapOf("success" to true, "data" to null)
             "getFftData" -> mapOf(
                 "success" to true,
-                "data" to mapOf("ldata" to emptyList<Int>(), "rdata" to emptyList<Int>()),
+                "data" to fftData(),
             )
 
             "getCoverRaw" -> mapOf("success" to true, "data" to null)
@@ -190,6 +192,74 @@ object PlaybackEngine {
             // 桌面专属 / 预载相关：默认成功空实现，保证渲染层流程不中断
             else -> success
         }
+    }
+
+    // MARK: - FFT 频谱（android.media.Visualizer）
+
+    /** 原版 Rust 引擎自算 FFT；Android 端用系统 Visualizer 提供同规格数据（256 点） */
+    private var visualizer: Visualizer? = null
+    private val fftLock = Any()
+
+    /** 最近一次 Visualizer FFT 采样；未就绪时 ldata/rdata 全 0 */
+    private var fftLeft: IntArray = IntArray(128)
+    private var fftRight: IntArray = IntArray(128)
+
+    private fun ensureVisualizer(audioSessionId: Int) {
+        if (visualizer != null || audioSessionId == 0) return
+        runCatching {
+            val viz = Visualizer(audioSessionId)
+            viz.setEnabled(true)
+            viz.captureCallBack(object : Visualizer.OnDataCaptureListener {
+                override fun onWaveFormDataCapture(v: Visualizer?, waveform: ByteArray?, samplingRate: Int) {}
+                override fun onFftDataCapture(v: Visualizer?, fft: ByteArray?, samplingRate: Int) {
+                    if (fft == null) return
+                    synchronized(fftLock) {
+                        // Visualizer FFT：交错 [real0, imag0, real1, imag1...]
+                        // 原版契约：ldata/rdata 为左右声道幅度数组
+                        val half = fft.size / 4
+                        val l = IntArray(half)
+                        val r = IntArray(half)
+                        for (i in 0 until half) {
+                            val re = fft[i * 2].toInt()
+                            val im = fft[i * 2 + 1].toInt()
+                            val mag = Math.sqrt((re * re + im * im).toDouble()).toInt()
+                            l[i] = mag.coerceIn(0, 255)
+                            val re2 = fft[fft.size / 2 + i * 2].toInt()
+                            val im2 = fft[fft.size / 2 + i * 2 + 1].toInt()
+                            r[i] = Math.sqrt((re2 * re2 + im2 * im2).toDouble()).toInt().coerceIn(0, 255)
+                        }
+                        fftLeft = l
+                        fftRight = r
+                    }
+                }
+            }, android.media.Visualizer.getMaxCaptureRate() / 2, true)
+            visualizer = viz
+        }.onFailure {
+            // RECORD_AUDIO 未授权或无 audioSession：频谱保持空数据
+            android.util.Log.w("PlaybackEngine", "Visualizer init failed: ${it.message}")
+        }
+    }
+
+    private fun fftData(): Map<String, Any> = synchronized(fftLock) {
+        mapOf(
+            "ldata" to fftLeft.toList(),
+            "rdata" to fftRight.toList(),
+        )
+    }
+
+    /** 暂停/停止时停采，省电（复刻原版"不播放即停频谱计算"） */
+    private fun setFftActive(active: Boolean) {
+        val viz = visualizer
+        if (viz == null) {
+            if (active) {
+                runCatching {
+                    ensureVisualizer(player?.audioSessionId ?: 0)
+                    visualizer?.enabled = active
+                }
+            }
+            return
+        }
+        runCatching { viz.setEnabled(active) }
     }
 
     private fun handleLoad(args: List<Any?>): Any? {

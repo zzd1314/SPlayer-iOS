@@ -21,6 +21,10 @@ import com.splayer.next.web.playback.PlaybackEngine
  */
 class WebHostActivity : AppCompatActivity() {
 
+    companion object {
+        private const val REQ_PICK_DIR = 4001
+    }
+
     lateinit var webView: WebView
         private set
     lateinit var bridge: SPlayerBridge
@@ -55,6 +59,7 @@ class WebHostActivity : AppCompatActivity() {
         val loader = WebViewAssetLoader.Builder()
             .setDomain("appassets.androidplatform.net")
             .addPathHandler("/assets/", RendererAssetHandler(this))
+            .addPathHandler("/localfile/", LocalFileHandler(this))
             .build()
 
         webView.webViewClient = object : WebViewClient() {
@@ -86,6 +91,37 @@ class WebHostActivity : AppCompatActivity() {
         return super.onKeyDown(keyCode, event)
     }
 
+    // MARK: - SAF 目录选择（download.pickDir）
+
+    /** 发起系统目录选择器；结果经 onDirectoryPicked 回填桥 */
+    fun launchDirectoryPicker() {
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)
+        intent.addFlags(
+            Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
+                Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
+        )
+        runCatching { startActivityForResult(intent, REQ_PICK_DIR) }
+            .onFailure { bridge.onDirectoryPicked(null) }
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == REQ_PICK_DIR) {
+            val uri = if (resultCode == RESULT_OK) data?.data?.toString() else null
+            if (uri != null) {
+                // 持久化授权，重启后仍可写入
+                runCatching {
+                    contentResolver.takePersistableUriPermission(
+                        android.net.Uri.parse(uri),
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                    )
+                }
+            }
+            bridge.onDirectoryPicked(uri)
+        }
+    }
+
     override fun onDestroy() {
         // 播放引擎保活（后台播放），仅销毁 WebView
         if (webView.parent != null) {
@@ -93,6 +129,25 @@ class WebHostActivity : AppCompatActivity() {
         }
         webView.destroy()
         super.onDestroy()
+    }
+}
+
+/**
+ * 本地文件处理器：/localfile/<token> → LibraryStore 封面 token 解析，
+ * 供渲染层 <img> 直接加载 MediaStore 专辑封面。
+ */
+class LocalFileHandler(context: Context) : WebViewAssetLoader.PathHandler {
+
+    private val appContext = context.applicationContext
+
+    override fun handle(path: String): WebResourceResponse? {
+        val token = path.trim('/').substringBefore('.')
+        val uri = com.splayer.next.web.api.LibraryStore.shared(appContext).resolveCoverToken(token)
+            ?: return null
+        return runCatching {
+            val stream = appContext.contentResolver.openInputStream(uri) ?: return null
+            WebResourceResponse("image/*", null, stream)
+        }.getOrNull()
     }
 }
 

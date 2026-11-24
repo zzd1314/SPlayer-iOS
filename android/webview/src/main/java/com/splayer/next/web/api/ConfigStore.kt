@@ -54,6 +54,17 @@ class ConfigStore(context: Context) {
         save(JSONObject(JsonWrite.write(replacement ?: emptyMap<Any, Any>())))
     }
 
+    companion object {
+        @Volatile
+        private var shared: ConfigStore? = null
+
+        /** 全局共享实例：供 DownloadManager / LibraryStore 等模块免注入访问 */
+        fun shared(context: Context): ConfigStore =
+            shared ?: synchronized(this) {
+                shared ?: ConfigStore(context.applicationContext).also { shared = it }
+            }
+    }
+
     private fun current(): JSONObject {
         cache?.let { return it }
         val raw = prefs.getString("config", null)

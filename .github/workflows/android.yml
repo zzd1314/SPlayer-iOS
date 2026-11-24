@@ -32,7 +32,12 @@ jobs:
           gradle-version: '8.9'
 
       - name: Fetch upstream SPlayer-Next source
-        run: git clone --depth 1 https://github.com/SPlayer-Dev/SPlayer-Next splayer-next-src
+        run: |
+          # 锁定经过验证的上游 commit，保证构建可复现
+          git clone --depth 1 https://github.com/SPlayer-Dev/SPlayer-Next splayer-next-src
+          git -C splayer-next-src fetch --depth 1 origin 5772455c88c88983800d14d1011c84aa08fbd1e8
+          git -C splayer-next-src checkout 5772455c88c88983800d14d1011c84aa08fbd1e8
+          git -C splayer-next-src rev-parse HEAD
 
       - name: Install upstream dependencies
         working-directory: splayer-next-src
@@ -79,6 +84,13 @@ jobs:
             --tsconfig=tsconfig.json \
             --log-level=warning
 
+      - name: Build streaming API bundle (reuse upstream TS services)
+        working-directory: splayer-next-src
+        run: |
+          # 复用上游主进程 streaming 服务层（Subsonic/Jellyfin adapters）
+          node android-bridge/build-streaming.mjs \
+            "$GITHUB_WORKSPACE/android/webview/src/main/assets/web/streaming-api.js"
+
       - name: Build debug APK
         run: gradle -p android :webview:assembleDebug --no-daemon --stacktrace
 
@@ -86,34 +98,42 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TAG=android-v1.0.0
+          TAG=android-v1.1.0
           APK=$(find android/webview/build/outputs/apk/debug -name "*.apk" | head -n1)
           if [ -z "$APK" ]; then
             echo "未找到 APK，终止发布"
             exit 1
           fi
-          cp "$APK" splayer-next-android-v1.0.0-web-debug.apk
+          cp "$APK" splayer-next-android-v1.1.0-web-debug.apk
           {
-            echo 'SPlayer Next Android v1.0.0 —— 基于上游 SPlayer-Next 原版 Vue 前端的 WebView 移植：'
+            echo 'SPlayer Next Android v1.1.0 —— 基于上游 SPlayer-Next 原版 Vue 前端的 WebView 移植（第二阶段功能补全版）：'
+            echo ''
+            echo '**v1.1.0 新增**'
+            echo '- 流媒体服务器：Subsonic / Navidrome / Jellyfin / Emby —— 直接复用上游主进程 streaming 服务层（26 个 TS 模块），加密、认证、音乐库同步逻辑与桌面版一致。'
+            echo '- 本地音乐库：MediaStore 扫描 + SQLite 持久化，专辑 / 艺术家 / 搜索 / 随机曲目，封面经内嵌 art 提取。'
+            echo '- 下载管理器：队列 / 进度 / 取消 / SAF 目录选择 / 歌词文件写入。'
+            echo '- 播放列表：本地 SQLite 完整 CRUD。'
+            echo '- 实时 FFT 频谱：android.media.Visualizer 提供同规格频谱数据（需授权麦克风权限）。'
+            echo '- 网易云在线搜索 / 播放 / 歌词 / 收藏（v1.0 已有）。'
             echo ''
             echo '**移植方式**'
-            echo '- 原版渲染层（Vue 3 + Pinia + UnoCSS）在 CI 中从上游源码实时构建，UI 与桌面版 1:1。'
-            echo '- 网易云 API 加密层（eapi / xeapi）直接复用上游主进程 TS 模块，在 WebView 内运行，请求经原生 HTTP 代理转发。'
-            echo '- 播放内核使用 Media3（ExoPlayer）承接原 Rust audio-engine 的播放契约，支持 mp3 / flac / ogg / aac / wav 在线与本地流播放。'
+            echo '- 原版渲染层（Vue 3 + Pinia + UnoCSS）在 CI 中从锁定 commit（5772455）实时构建，UI 与桌面版 1:1。'
+            echo '- 网易云 API 加密层（eapi / xeapi）与流媒体服务层直接复用上游主进程 TS 模块，在 WebView 内运行，请求经原生 HTTP 代理转发。'
+            echo '- 播放内核使用 Media3（ExoPlayer）承接原 Rust audio-engine 的播放契约。'
             echo '- MediaSession 前台服务：锁屏 / 通知栏 / 蓝牙控制、后台播放、音频焦点管理。'
             echo ''
             echo '**已知限制（后续版本迭代）**'
-            echo '- 本地音乐扫描、下载管理器、流媒体服务器（Subsonic/Jellyfin/Emby）暂未接入本版，将在后续版本补齐。'
-            echo '- 实时 FFT 频谱暂不可用（Media3 可视化数据待接入）。'
-            echo '- APE 等极少见格式依赖 FFmpeg 扩展，暂不支持。'
+            echo '- Rust audio-engine + FFmpeg ARM64 原生编译仍在验证中，当前播放内核为 Media3；APE 等冷门格式暂不支持。'
+            echo '- 本地音乐标签写入（writeTags）暂不支持（Android 端无成熟标签库），元数据编辑会在后续版本补齐。'
+            echo '- 下载标签嵌入（封面 / 歌词写入音频文件）暂未实现，仅写入同名 .lrc 歌词文件。'
             echo ''
-            echo '安装包约 9MB，需要 Android 8.0（API 26）及以上。'
+            echo '安装包需要 Android 8.0（API 26）及以上。'
           } > release-notes.md
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" splayer-next-android-v1.0.0-web-debug.apk --clobber
+            gh release upload "$TAG" splayer-next-android-v1.1.0-web-debug.apk --clobber
           else
-            gh release create "$TAG" splayer-next-android-v1.0.0-web-debug.apk \
+            gh release create "$TAG" splayer-next-android-v1.1.0-web-debug.apk \
               --target "$GITHUB_SHA" \
-              --title "SPlayer Next Android v1.0.0（原版 UI 移植版）" \
+              --title "SPlayer Next Android v1.1.0（功能补全版）" \
               --notes-file release-notes.md
           fi

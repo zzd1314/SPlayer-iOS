@@ -16,11 +16,23 @@ class BridgeUnsupportedException(message: String) : Exception(message)
 class BridgeRouter(private val context: Context, private val bridge: Any?) {
 
     private val configStore = ConfigStore(context)
+    private val libraryStore by lazy { LibraryStore(context) }
+    private val playlistStore by lazy { PlaylistStore(context) }
+
+    init {
+        val b = bridge as? com.splayer.next.web.SPlayerBridge
+        DownloadManager.init(context, b)
+        com.splayer.next.web.SPlayerBridge.activate(b)
+        LibraryStore.shared(context)
+    }
 
     fun dispatch(ns: String, method: String, args: List<Any?>): Any? = when (ns) {
         "player" -> PlaybackEngine.handle(method, args)
         "config" -> dispatchConfig(method, args)
         "system" -> dispatchSystem(method, args)
+        "library" -> libraryStore.handle(method, args)
+        "playlist" -> playlistStore.handle(method, args)
+        "download" -> DownloadManager.handle(method, args)
         else -> throw BridgeUnsupportedException("$ns.$method 暂未在 Android 端实现")
     }
 
