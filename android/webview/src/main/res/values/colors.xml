@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 与渲染层启动层背景一致，避免图标边缘出现色块 -->
+    <color name="ic_launcher_background">#101014</color>
+</resources>

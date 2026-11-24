@@ -12,12 +12,26 @@ android {
         applicationId = "com.splayer.next"
         minSdk = 26
         targetSdk = 35
-        versionCode = 103
-        versionName = "1.1.2"
+        versionCode = 104
+        versionName = "1.1.3"
+    }
+
+    // 固定签名：早期每个 CI runner 都会随机生成 debug keystore，导致新包无法覆盖安装（签名冲突）
+    signingConfigs {
+        create("shared") {
+            storeFile = file("splayer-debug.jks")
+            storePassword = "splayer2026"
+            keyAlias = "splayer"
+            keyPassword = "splayer2026"
+        }
     }
 
     buildTypes {
-        release {
+        getByName("debug") {
+            signingConfig = signingConfigs.getByName("shared")
+        }
+        getByName("release") {
+            signingConfig = signingConfigs.getByName("shared")
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
