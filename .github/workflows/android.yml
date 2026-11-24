@@ -48,16 +48,23 @@ jobs:
         working-directory: android
         run: gradle :app:assembleDebug --no-daemon --stacktrace 2>&1 | tee ../build.log
 
-      - name: Publish build log on failure
-        if: failure()
+      - name: Upload build log
+        if: always()
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          tail -n 200 build.log || true
+          {
+            echo "=== apk files ==="
+            find . -name "*.apk" -print 2>/dev/null || true
+            echo "=== build outputs ==="
+            ls -R android/app/build/outputs 2>/dev/null || true
+            echo "=== tail of build.log ==="
+            tail -n 80 build.log 2>/dev/null || true
+          } >> build.log
           if gh release view ci-logs >/dev/null 2>&1; then
             gh release upload ci-logs build.log --clobber
           else
-            gh release create ci-logs build.log --target "$GITHUB_SHA" --title "CI build logs" --notes "构建失败日志（自动上传）"
+            gh release create ci-logs build.log --target "$GITHUB_SHA" --title "CI build logs" --notes "构建日志（自动上传）"
           fi
 
       - name: Upload APK artifact
