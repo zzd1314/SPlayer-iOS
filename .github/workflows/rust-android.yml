@@ -1,0 +1,63 @@
+name: rust-android (experimental)
+
+# 实验 workflow：验证 ffmpeg-audio（audio-engine 的解码核心）能否交叉编译为
+# aarch64-linux-android 动态库。不影响主发布流程（android.yml）。
+on:
+  push:
+    branches: [android]
+    paths:
+      - 'tools/rust-android-test/**'
+      - '.github/workflows/rust-android.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install libclang (bindgen requirement)
+        run: sudo apt-get update && sudo apt-get install -y libclang-dev
+
+      # 固定上游 commit，锁定编译输入（与 audio-engine 引用的 tag 同源）
+      - name: Checkout ffmpeg-audio @ 16bd156
+        run: |
+          git clone https://github.com/SPlayer-Dev/ffmpeg-audio.git "$GITHUB_WORKSPACE/tools/ffmpeg-audio"
+          git -C "$GITHUB_WORKSPACE/tools/ffmpeg-audio" checkout 16bd156
+          git -C "$GITHUB_WORKSPACE/tools/ffmpeg-audio" log --oneline -1
+
+      - name: Set up Rust (aarch64-linux-android)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - name: Build cdylib for aarch64-linux-android
+        working-directory: tools/rust-android-test
+        run: |
+          set -e
+          NDK=$(ls -d "$ANDROID_HOME"/ndk/* | sort -V | tail -n 1)
+          echo "Using NDK: $NDK"
+          TOOL="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$TOOL/aarch64-linux-android24-clang"
+          export CC_aarch64_linux_android="$TOOL/aarch64-linux-android24-clang"
+          export AR_aarch64_linux_android="$TOOL/llvm-ar"
+          export LIBCLANG_PATH=$(ls -d /usr/lib/llvm-*/lib | sort -V | tail -n 1)
+          echo "LIBCLANG_PATH=$LIBCLANG_PATH"
+          cargo build --release --target aarch64-linux-android
+
+      - name: Inspect artifact
+        run: |
+          SO=tools/rust-android-test/target/aarch64-linux-android/release/librust_android_test.so
+          file "$SO"
+          "$ANDROID_HOME/ndk/$(ls "$ANDROID_HOME/ndk" | sort -V | tail -n 1)/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-nm" -D "$SO" | grep -E "Java_|av_version" || true
+          du -h "$SO"
+
+      - name: Upload .so artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: librust_android_test-arm64
+          path: tools/rust-android-test/target/aarch64-linux-android/release/*.so
+          if-no-files-found: error

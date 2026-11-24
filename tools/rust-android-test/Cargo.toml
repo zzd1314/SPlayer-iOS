@@ -1,0 +1,15 @@
+[package]
+name = "rust-android-test"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+# 依赖固定 tag 的 ffmpeg-audio（audio-engine 同款 v0.4.0-spn.1），
+# CI 中 clone 到本目录旁的 ../ffmpeg-audio。
+[dependencies]
+ffmpeg_audio = { path = "../ffmpeg-audio/crates/ffmpeg_audio", default-features = false }
+
+[profile.release]
+strip = "symbols"
