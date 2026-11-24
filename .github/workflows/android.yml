@@ -141,63 +141,53 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TAG=android-v1.1.4
+          # 版本号统一从 build.gradle.kts 读取，避免每次发版都要改工作流
+          VERSION=$(grep -oP 'versionName\s*=\s*"\K[^"]+' android/webview/build.gradle.kts | head -n1)
+          if [ -z "$VERSION" ]; then
+            echo "未能从 build.gradle.kts 读取 versionName，终止发布"
+            exit 1
+          fi
+          TAG="android-v$VERSION"
+          APK_NAME="splayer-next-android-v$VERSION-web-debug.apk"
           APK=$(find android/webview/build/outputs/apk/debug -name "*.apk" | head -n1)
           if [ -z "$APK" ]; then
             echo "未找到 APK，终止发布"
             exit 1
           fi
-          cp "$APK" splayer-next-android-v1.1.4-web-debug.apk
+          cp "$APK" "$APK_NAME"
           {
-            echo 'SPlayer Next Android v1.1.4 —— 基于上游 SPlayer-Next 原版 Vue 前端的 WebView 移植：'
+            echo "SPlayer Next Android v$VERSION —— 基于上游 SPlayer-Next 原版 Vue 前端的 WebView 移植："
             echo ''
-            echo '**v1.1.4 修复（真机启动仍失败 / 满屏 "Script error."）**'
-            echo '- 根因：桥接层把调用的 callId 直接拼进注入脚本，字符串没有加引号，实际执行成 window.__splayerResolve(c1, ...) 并抛 ReferenceError。'
-            echo '- 后果：每个桥调用都不会回结果 → window.api.window.ready() 永不 resolve → 启动层无法退出（卡 logo）；同时注入脚本没有源文件，WebView 把错误统一报成 "Script error."，所以诊断面板里是二十多条相同错误。'
-            echo '- 修复：callId / 事件 channel 统一用 JSONObject.quote 转义为合法 JS 字符串字面量；注入调用加保护，避免 WebView 销毁后回调崩溃。'
+            echo '**v1.1.5 修复（真机启动仍停诊断面板）**'
+            echo '- 根因：桥接调用跑在 Dispatchers.IO 协程（DefaultDispatcher-worker）上，而 Media3 ExoPlayer 强制要求主线程访问，initPlayer() 中首次读取播放器状态就抛 Player is accessed on the wrong thread，启动流程中断。'
+            echo '- 修复：window.api.player.* 全部调用统一切到主线程同步执行（含 getStatus / getVolume 等读取），并加 10s 超时保护。'
+            echo ''
+            echo '**v1.1.4 修复**'
+            echo '- 根因：桥接层把 callId 直接拼进注入脚本且未加引号，实际执行成 window.__splayerResolve(c1, ...) 并抛 ReferenceError；每个调用都不回结果，导致 window.api.window.ready() 永不 resolve、启动层卡死，且错误被 WebView 统一报成 Script error.。'
+            echo '- 修复：callId / 事件 channel 统一用 JSONObject.quote 转义为合法 JS 字符串字面量。'
             echo ''
             echo '**v1.1.3 修复**'
-            echo '- 固定签名：改用仓库内固定的签名密钥，后续版本可直接覆盖安装，不再出现"已安装了签名冲突的应用"。'
-            echo '- 应用图标：启用官方 SPlayer 标志的自适应图标（深色背景 + 品牌色音符），替换系统默认安卓机器人图标。'
-            echo '- 启动诊断增强：错误信息附带文件名/行号/列号、相同错误合并计数，并列出各脚本的加载状态（HTTP 状态 / 类型 / 大小）；同时移除 Vite 产物的 crossorigin 属性，避免 WebView 内错误退化成 "Script error."。'
-            echo '- 渲染层 console 输出同步到 logcat（标签 SPlayerWeb）。'
+            echo '- 固定签名密钥，后续版本可直接覆盖安装，不再出现“已安装了签名冲突的应用”。'
+            echo '- 启用官方 SPlayer 标志的自适应图标，替换系统默认安卓机器人图标。'
+            echo '- 启动诊断面板升级：错误带文件名/行号、相同错误合并计数、并检查各脚本加载状态；渲染层 console 同步到 logcat（标签 SPlayerWeb）。'
             echo ''
-            echo '> 注意：首次从 1.1.3 之前的旧版本升级仍需卸载一次（旧包使用随机 debug 签名，无法直接覆盖）；从 v1.1.3 起可正常覆盖更新。'
+            echo '**v1.1.2 修复**'
+            echo '- 补齐 window.* 与 plugins.* 桥接，修复启动首句 window.api.window.ready() 被拒绝的问题。'
             echo ''
-            echo '**v1.1.2 修复（真机 Android 17 启动卡在 logo）**'
-            echo '- 补齐 window.* 与 plugins.* 桥接，修复启动流程第一句 window.api.window.ready() 调用被拒绝的问题。'
+            echo '**早期版本**：v1.1.1 接入 Rust/FFmpeg 音频核心动态库；v1.1.0 接入流媒体、本地音乐库、下载管理、播放列表、实时频谱。'
             echo ''
-            echo '**v1.1.1 新增（Rust 音频核心接入）**'
-            echo '- FFmpeg 音频核心已完成 aarch64-linux-android 交叉编译并以 460KB 动态库随 APK 打包（librust_android_test.so，静态链接 FFmpeg n9.0.2）。'
-            echo '- 通过 window.api.rust.probe() 可实测动态库加载状态、JNI 符号绑定与 FFmpeg 主版本号，为完整 audio-engine 迁移提供可验证入口。'
-            echo ''
-            echo '**v1.1.0 新增**'
-            echo '- 流媒体服务器：Subsonic / Navidrome / Jellyfin / Emby —— 直接复用上游主进程 streaming 服务层（26 个 TS 模块），加密、认证、音乐库同步逻辑与桌面版一致。'
-            echo '- 本地音乐库：MediaStore 扫描 + SQLite 持久化，专辑 / 艺术家 / 搜索 / 随机曲目，封面经内嵌 art 提取。'
-            echo '- 下载管理器：队列 / 进度 / 取消 / SAF 目录选择 / 歌词文件写入。'
-            echo '- 播放列表：本地 SQLite 完整 CRUD。'
-            echo '- 实时 FFT 频谱：android.media.audiofx.Visualizer 提供同规格频谱数据（需授权麦克风权限）。'
-            echo '- 网易云在线搜索 / 播放 / 歌词 / 收藏（v1.0 已有）。'
-            echo ''
-            echo '**移植方式**'
-            echo '- 原版渲染层（Vue 3 + Pinia + UnoCSS）在 CI 中从锁定 commit（5772455）实时构建，UI 与桌面版 1:1。'
-            echo '- 网易云 API 加密层（eapi / xeapi）与流媒体服务层直接复用上游主进程 TS 模块，在 WebView 内运行，请求经原生 HTTP 代理转发。'
-            echo '- 播放内核仍使用 Media3（ExoPlayer）承接原 Rust audio-engine 的播放契约；Rust/FFmpeg 核心以动态库形式随包提供，完整解码链路接入尚未完成。'
-            echo '- MediaSession 前台服务：锁屏 / 通知栏 / 蓝牙控制、后台播放、音频焦点管理。'
-            echo ''
-            echo '**已知限制（后续版本迭代）**'
-            echo '- Rust audio-engine 完整解码 / 输出链路（cpal oboe / napi→JNI 全量绑定）尚未接入，当前播放内核为 Media3；APE 等冷门格式暂不支持。'
-            echo '- 本地音乐标签写入（writeTags）暂不支持（Android 端无成熟标签库），元数据编辑会在后续版本补齐。'
-            echo '- 下载标签嵌入（封面 / 歌词写入音频文件）暂未实现，仅写入同名 .lrc 歌词文件。'
-            echo '- 未进行规模化真机 / 模拟器验证；v1.1.4 的桥接修复以本地 Chromium 复现 + 用户单机（Android 17）反馈为依据，真机结论仍以复测为准。'
+            echo '**已知限制**'
+            echo '- Rust audio-engine 完整解码/输出链路尚未接入，当前播放内核为 Media3；APE 等冷门格式暂不支持。'
+            echo '- 本地音乐标签写入、下载标签嵌入暂未实现（仅写入同名 .lrc 歌词）。'
+            echo '- 未进行规模化真机/模拟器验证，真机结论以实际复测为准。'
             echo ''
             echo '安装包需要 Android 8.0（API 26）及以上，当前仅提供 arm64-v8a。'
           } > release-notes.md
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" splayer-next-android-v1.1.4-web-debug.apk --clobber
+            gh release upload "$TAG" "$APK_NAME" --clobber
           else
-            gh release create "$TAG" splayer-next-android-v1.1.4-web-debug.apk \
+            gh release create "$TAG" "$APK_NAME" \
               --target "$GITHUB_SHA" \
-              --title "SPlayer Next Android v1.1.4（修复桥接注入导致启动卡死）" \
+              --title "SPlayer Next Android v$VERSION" \
               --notes-file release-notes.md
           fi
