@@ -7,7 +7,6 @@ on:
 
 permissions:
   contents: write
-  issues: write
 
 jobs:
   build:
@@ -138,18 +137,23 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TAG=android-v1.1.1
+          TAG=android-v1.1.2
           APK=$(find android/webview/build/outputs/apk/debug -name "*.apk" | head -n1)
           if [ -z "$APK" ]; then
             echo "未找到 APK，终止发布"
             exit 1
           fi
-          cp "$APK" splayer-next-android-v1.1.1-web-debug.apk
+          cp "$APK" splayer-next-android-v1.1.2-web-debug.apk
           {
-            echo 'SPlayer Next Android v1.1.1 —— 基于上游 SPlayer-Next 原版 Vue 前端的 WebView 移植（第二阶段功能补全版）：'
+            echo 'SPlayer Next Android v1.1.2 —— 基于上游 SPlayer-Next 原版 Vue 前端的 WebView 移植：'
+            echo ''
+            echo '**v1.1.2 修复（真机 Android 17 启动卡在 logo）**'
+            echo '- 根因：渲染层启动流程第一句为 window.api.window.ready()，但 Kotlin 桥未实现 window 命名空间，调用被拒绝后启动层（#app-loading）不会被移除，表现为永久停在 logo。'
+            echo '- 修复：补齐 window.* 桥接（ready / startupComplete / startupFailed / 窗口状态查询等），启动流程可正常走完并进入主界面。'
+            echo '- 新增启动诊断面板：若启动 8 秒后仍未进入主界面，页面会覆盖显示具体 JS 错误、WebView 版本与页面 URL，并可一键重新加载；同时首条错误写入 logcat（标签 SPlayerBoot）。'
             echo ''
             echo '**v1.1.1 新增（Rust 音频核心接入）**'
-            echo '- FFmpeg 音频核心已完成 aarch64-linux-android 交叉编译并以约 460KB 动态库随 APK 打包（librust_android_test.so，静态链接 FFmpeg n9.0.2）。'
+            echo '- FFmpeg 音频核心已完成 aarch64-linux-android 交叉编译并以 460KB 动态库随 APK 打包（librust_android_test.so，静态链接 FFmpeg n9.0.2）。'
             echo '- 通过 window.api.rust.probe() 可实测动态库加载状态、JNI 符号绑定与 FFmpeg 主版本号，为完整 audio-engine 迁移提供可验证入口。'
             echo ''
             echo '**v1.1.0 新增**'
@@ -170,15 +174,15 @@ jobs:
             echo '- Rust audio-engine 完整解码 / 输出链路（cpal oboe / napi→JNI 全量绑定）尚未接入，当前播放内核为 Media3；APE 等冷门格式暂不支持。'
             echo '- 本地音乐标签写入（writeTags）暂不支持（Android 端无成熟标签库），元数据编辑会在后续版本补齐。'
             echo '- 下载标签嵌入（封面 / 歌词写入音频文件）暂未实现，仅写入同名 .lrc 歌词文件。'
-            echo '- 未进行真机 / 模拟器运行验证（当前环境无 Android 设备），以上功能仅通过编译与 APK 结构校验。'
+            echo '- 未进行规模化真机 / 模拟器验证；v1.1.2 的启动修复基于用户单机（Android 17）反馈复测。'
             echo ''
             echo '安装包需要 Android 8.0（API 26）及以上，当前仅提供 arm64-v8a。'
           } > release-notes.md
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" splayer-next-android-v1.1.1-web-debug.apk --clobber
+            gh release upload "$TAG" splayer-next-android-v1.1.2-web-debug.apk --clobber
           else
-            gh release create "$TAG" splayer-next-android-v1.1.1-web-debug.apk \
+            gh release create "$TAG" splayer-next-android-v1.1.2-web-debug.apk \
               --target "$GITHUB_SHA" \
-              --title "SPlayer Next Android v1.1.1（Rust 音频核心接入）" \
+              --title "SPlayer Next Android v1.1.2（修复 Android 17 启动卡 Logo）" \
               --notes-file release-notes.md
           fi
