@@ -1,12 +1,8 @@
 package com.splayer.next.data
 
-import androidx.compose.ui.graphics.Color
-import com.splayer.next.ui.theme.Accent
-import com.splayer.next.ui.theme.AccentBlue
-import com.splayer.next.ui.theme.AccentPink
-import com.splayer.next.ui.theme.AccentTeal
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
 import java.net.HttpURLConnection
@@ -14,32 +10,63 @@ import java.net.URL
 import java.net.URLEncoder
 
 /**
- * 网易云音乐匿名 Web 接口的最小封装。
- * 仅使用 HttpURLConnection + org.json，避免引入额外的网络/序列化依赖。
+ * 网易云音乐 Web 接口封装。
+ * 与 iOS 端的 NeteaseAPI 保持同构：搜索、推荐、歌单详情、歌词、账号资料。
+ * 仅使用 HttpURLConnection + org.json，避免额外依赖。
  */
 object NetEaseApi {
 
+    private const val BASE = "https://music.163.com"
     private const val USER_AGENT =
         "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Mobile Safari/537.36"
-    private const val REFERER = "https://music.163.com/"
 
-    private val tints = listOf(Accent, AccentBlue, AccentTeal, AccentPink)
+    /** 登录 Cookie（由设置页写入） */
+    @Volatile
+    var cookie: String? = null
 
-    suspend fun search(keyword: String): List<Song> = withContext(Dispatchers.IO) {
+    // MARK: - 搜索
+
+    suspend fun searchSongs(keyword: String): List<Song> = withContext(Dispatchers.IO) {
         val encoded = URLEncoder.encode(keyword, "UTF-8")
-        val body = get(
-            "https://music.163.com/api/search/get/web" +
-                "?csrf_token=&s=$encoded&type=1&offset=0&total=true&limit=30"
-        )
-        val songs = JSONObject(body)
-            .optJSONObject("result")
-            ?.optJSONArray("songs")
+        val body = get("$BASE/api/search/get/web?csrf_token=&s=$encoded&type=1&offset=0&total=true&limit=50")
+        val songs = JSONObject(body).optJSONObject("result")?.optJSONArray("songs")
             ?: return@withContext emptyList()
-        (0 until songs.length()).mapNotNull { index -> songFrom(songs.optJSONObject(index)) }
+        (0 until songs.length()).mapNotNull { songFrom(songs.optJSONObject(it)) }
     }
 
+    suspend fun searchPlaylists(keyword: String): List<Playlist> = withContext(Dispatchers.IO) {
+        val encoded = URLEncoder.encode(keyword, "UTF-8")
+        val body = get("$BASE/api/search/get/web?csrf_token=&s=$encoded&type=1000&offset=0&total=true&limit=30")
+        val list = JSONObject(body).optJSONObject("result")?.optJSONArray("playlists")
+            ?: return@withContext emptyList()
+        (0 until list.length()).mapNotNull { playlistFrom(list.optJSONObject(it)) }
+    }
+
+    suspend fun searchArtists(keyword: String): List<ArtistItem> = withContext(Dispatchers.IO) {
+        val encoded = URLEncoder.encode(keyword, "UTF-8")
+        val body = get("$BASE/api/search/get/web?csrf_token=&s=$encoded&type=100&offset=0&total=true&limit=30")
+        val list = JSONObject(body).optJSONObject("result")?.optJSONArray("artists")
+            ?: return@withContext emptyList()
+        (0 until list.length()).mapNotNull { index ->
+            val item = list.optJSONObject(index) ?: return@mapNotNull null
+            val id = item.optLong("id")
+            if (id <= 0L) return@mapNotNull null
+            ArtistItem(
+                id = id.toString(),
+                name = item.optString("name").ifBlank { "未知艺人" },
+                coverUrl = httpsUrl(
+                    item.optString("picUrl").ifBlank { item.optString("img1v1Url") }
+                ),
+                subtitle = "歌手",
+                tint = tintForId(id)
+            )
+        }
+    }
+
+    // MARK: - 推荐
+
     suspend fun newSongs(): List<Song> = withContext(Dispatchers.IO) {
-        val body = get("https://music.163.com/api/personalized/newsong?limit=20")
+        val body = get("$BASE/api/personalized/newsong?limit=20")
         val result = JSONObject(body).optJSONArray("result") ?: return@withContext emptyList()
         (0 until result.length()).mapNotNull { index ->
             val item = result.optJSONObject(index) ?: return@mapNotNull null
@@ -48,51 +75,151 @@ object NetEaseApi {
     }
 
     suspend fun recommendedPlaylists(): List<Playlist> = withContext(Dispatchers.IO) {
-        val body = get("https://music.163.com/api/personalized/playlist?limit=6&total=true&n=1000")
+        val body = get("$BASE/api/personalized/playlist?limit=12&total=true&n=1000")
         val result = JSONObject(body).optJSONArray("result") ?: return@withContext emptyList()
-        (0 until result.length()).mapNotNull { index ->
-            val item = result.optJSONObject(index) ?: return@mapNotNull null
-            val id = item.optLong("id")
-            if (id <= 0L) return@mapNotNull null
-            val name = item.optString("name").ifBlank { "精选歌单" }
-            Playlist(
-                id = id.toString(),
-                title = name,
-                subtitle = playCountLabel(item.optLong("playCount")),
-                tint = tintFor(id)
-            )
-        }
+        (0 until result.length()).mapNotNull { playlistFrom(result.optJSONObject(it)) }
     }
 
-    /** 匿名可用的歌曲外链，播放时会 302 到 CDN（可能为 http，需要允许跨协议重定向） */
-    fun streamUrl(id: Long): String = "https://music.163.com/song/media/outer/url?id=$id.mp3"
+    /** 排行榜：飙升榜 / 新歌榜 / 原创榜等 */
+    suspend fun topPlaylists(): List<Playlist> = withContext(Dispatchers.IO) {
+        val body = get("$BASE/api/toplist")
+        val root = JSONObject(body)
+        val list = root.optJSONArray("list") ?: root.optJSONArray("result")
+            ?: return@withContext emptyList()
+        (0 until list.length()).mapNotNull { playlistFrom(list.optJSONObject(it)) }
+    }
 
-    private fun songFrom(json: JSONObject?): Song? {
-        if (json == null) return null
-        val id = json.optLong("id")
-        if (id <= 0L) return null
-        val artists = json.optJSONArray("artists")
-        val artist = artists?.optJSONObject(0)?.optString("name").orEmpty().ifBlank { "未知艺人" }
-        val album = json.optJSONObject("album")?.optString("name").orEmpty().ifBlank { "未知专辑" }
-        return Song(
-            id = id.toString(),
-            title = json.optString("name").ifBlank { "未知歌曲" },
-            artist = artist,
-            album = album,
-            duration = formatDuration(json.optLong("duration")),
-            tint = tintFor(id),
-            url = streamUrl(id)
+    // MARK: - 歌单详情
+
+    suspend fun playlistDetail(id: String): PlaylistWithSongs? = withContext(Dispatchers.IO) {
+        val body = get("$BASE/api/playlist/detail?id=$id")
+        val root = JSONObject(body)
+        val result = root.optJSONObject("result") ?: return@withContext null
+        val playlistObj = result.optJSONObject("playlist") ?: result
+        val tracks = playlistObj.optJSONArray("tracks")
+            ?: result.optJSONArray("tracks")
+            ?: JSONArray()
+
+        val songs = (0 until tracks.length()).mapNotNull { songFrom(tracks.optJSONObject(it)) }
+        val playlistId = playlistObj.optLong("id").takeIf { it > 0L } ?: id.toLongOrNull() ?: 0L
+        val creator = playlistObj.optJSONObject("creator")?.optString("nickname").orEmpty()
+        val playlist = Playlist(
+            id = playlistId.toString(),
+            title = playlistObj.optString("name").ifBlank { "歌单" },
+            subtitle = creator.ifBlank { "" },
+            coverUrl = httpsUrl(playlistObj.optString("coverImgUrl")),
+            tint = tintForId(playlistId),
+            trackCount = playlistObj.optInt("trackCount", songs.size),
+            playCount = playlistObj.optLong("playCount")
+        )
+        PlaylistWithSongs(playlist, songs)
+    }
+
+    // MARK: - 歌词
+
+    suspend fun lyric(songId: String): Lyric = withContext(Dispatchers.IO) {
+        val body = get("$BASE/api/song/lyric?id=$songId&lv=1&kv=1&tv=-1")
+        val root = JSONObject(body)
+        val lrc = root.optJSONObject("lrc")?.optString("lyric")
+        val translation = root.optJSONObject("tlyric")?.optString("lyric")
+        LrcParser.parse(lrc, translation)
+    }
+
+    // MARK: - 账号
+
+    suspend fun account(): UserProfile? = withContext(Dispatchers.IO) {
+        val body = get("$BASE/api/nuser/account/get")
+        val root = JSONObject(body)
+        val profile = root.optJSONObject("profile") ?: return@withContext null
+        val userId = profile.optLong("userId")
+        if (userId <= 0L) return@withContext null
+        UserProfile(
+            userId = userId,
+            nickname = profile.optString("nickname").ifBlank { "网易云用户" },
+            avatarUrl = httpsUrl(profile.optString("avatarUrl")),
+            signature = profile.optString("signature")
         )
     }
 
+    /** 匿名可用的歌曲外链，播放时会 302 到 CDN（可能为 http，需要允许跨协议重定向） */
+    fun streamUrl(id: String): String = "$BASE/song/media/outer/url?id=$id.mp3"
+
+    // MARK: - 解析
+
+    private fun songFrom(json: JSONObject?): Song? {
+        if (json == null) return null
+        val id = json.optLong("id").takeIf { it > 0L }
+            ?: json.optString("id").toLongOrNull()?.takeIf { it > 0L }
+            ?: return null
+        val artists = json.optJSONArray("artists") ?: json.optJSONArray("ar")
+        val album = json.optJSONObject("album") ?: json.optJSONObject("al")
+        val aliasArray = json.optJSONArray("alias") ?: json.optJSONArray("alia")
+        val alias = aliasArray?.optString(0)?.ifBlank { null }
+        val duration = json.optLong("duration").takeIf { it > 0L }
+            ?: json.optLong("dt").takeIf { it > 0L }
+            ?: 0L
+
+        return Song(
+            id = id.toString(),
+            title = json.optString("name").ifBlank { "未知歌曲" },
+            artist = artistNames(artists).ifBlank { "未知艺人" },
+            album = album?.optString("name").orEmpty(),
+            durationMs = duration,
+            coverUrl = httpsUrl(
+                album?.optString("picUrl").orEmpty().ifBlank { json.optString("picUrl") }
+            ),
+            streamUrl = streamUrl(id.toString()),
+            tint = tintForId(id),
+            fee = json.optInt("fee"),
+            alias = alias
+        )
+    }
+
+    private fun artistNames(array: JSONArray?): String {
+        if (array == null) return ""
+        val names = (0 until array.length()).mapNotNull { index ->
+            array.optJSONObject(index)?.optString("name")?.ifBlank { null }
+        }
+        return names.joinToString(" / ")
+    }
+
+    private fun playlistFrom(json: JSONObject?): Playlist? {
+        if (json == null) return null
+        val id = json.optLong("id")
+        if (id <= 0L) return null
+        val name = json.optString("name").ifBlank { "精选歌单" }
+        val creator = json.optJSONObject("creator")?.optString("nickname").orEmpty()
+        val trackCount = json.optInt("trackCount")
+        return Playlist(
+            id = id.toString(),
+            title = name,
+            subtitle = creator,
+            coverUrl = httpsUrl(json.optString("coverImgUrl")),
+            tint = tintForId(id),
+            trackCount = trackCount,
+            playCount = json.optLong("playCount")
+        )
+    }
+
+    /** 统一把封面/头像地址升级为 https，避免明文图片被拦截 */
+    private fun httpsUrl(url: String?): String? {
+        if (url.isNullOrBlank()) return null
+        return if (url.startsWith("http://")) "https://" + url.removePrefix("http://") else url
+    }
+
+    // MARK: - HTTP
+
     private fun get(url: String): String {
         val connection = URL(url).openConnection() as HttpURLConnection
-        connection.connectTimeout = 8000
-        connection.readTimeout = 8000
+        connection.connectTimeout = 10_000
+        connection.readTimeout = 10_000
         connection.requestMethod = "GET"
         connection.setRequestProperty("User-Agent", USER_AGENT)
-        connection.setRequestProperty("Referer", REFERER)
+        connection.setRequestProperty("Referer", "$BASE/")
         connection.setRequestProperty("Accept", "application/json")
+        cookie?.takeIf { it.isNotBlank() }?.let {
+            connection.setRequestProperty("Cookie", it)
+        }
         try {
             val code = connection.responseCode
             if (code !in 200..299) throw IOException("HTTP $code")
@@ -101,18 +228,10 @@ object NetEaseApi {
             connection.disconnect()
         }
     }
-
-    private fun tintFor(id: Long): Color = tints[(id % tints.size).toInt()]
-
-    private fun formatDuration(durationMs: Long): String {
-        if (durationMs <= 0L) return "--:--"
-        val totalSeconds = durationMs / 1000
-        return "%02d:%02d".format(totalSeconds / 60, totalSeconds % 60)
-    }
-
-    private fun playCountLabel(playCount: Long): String = when {
-        playCount >= 10000L -> "${playCount / 10000}万播放"
-        playCount > 0L -> "$playCount 播放"
-        else -> "精选推荐"
-    }
 }
+
+/** 歌单详情：歌单元信息 + 曲目列表 */
+data class PlaylistWithSongs(
+    val playlist: Playlist,
+    val songs: List<Song>
+)
