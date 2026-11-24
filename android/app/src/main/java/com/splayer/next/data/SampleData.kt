@@ -8,7 +8,8 @@ data class Song(
     val artist: String,
     val album: String,
     val duration: String,
-    val tint: Color
+    val tint: Color,
+    val url: String = ""
 )
 
 data class Playlist(
@@ -19,15 +20,17 @@ data class Playlist(
 )
 
 object SampleData {
+    private const val DEMO_AUDIO = "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-"
+
     val songs = listOf(
-        Song("1", "夜行列车", "陈默", "城市回声", "04:12", Color(0xFFFF6A3D)),
-        Song("2", "液态月光", "Luna", "Glass Hours", "03:48", Color(0xFF3D7BFF)),
-        Song("3", "海边信号", "旧电台", "未送达的信", "05:01", Color(0xFF24D3C0)),
-        Song("4", "午夜霓虹", "Neon Kid", "Downtown", "03:22", Color(0xFFFF4FA3)),
-        Song("5", "风经过", "林岸", "四季", "04:36", Color(0xFF8C7BFF)),
-        Song("6", "沙漏", "白噪实验", "时间碎片", "02:58", Color(0xFF6FD08C)),
-        Song("7", "漂浮", "Aero", "Low Gravity", "04:05", Color(0xFFF5B942)),
-        Song("8", "静默频率", "深海电台", "FM 96.7", "06:11", Color(0xFF5AC8FA))
+        Song("1", "夜行列车", "陈默", "城市回声", "04:12", Color(0xFFFF6A3D), DEMO_AUDIO + "1.mp3"),
+        Song("2", "液态月光", "Luna", "Glass Hours", "03:48", Color(0xFF3D7BFF), DEMO_AUDIO + "2.mp3"),
+        Song("3", "海边信号", "旧电台", "未送达的信", "05:01", Color(0xFF24D3C0), DEMO_AUDIO + "3.mp3"),
+        Song("4", "午夜霓虹", "Neon Kid", "Downtown", "03:22", Color(0xFFFF4FA3), DEMO_AUDIO + "4.mp3"),
+        Song("5", "风经过", "林岸", "四季", "04:36", Color(0xFF8C7BFF), DEMO_AUDIO + "5.mp3"),
+        Song("6", "沙漏", "白噪实验", "时间碎片", "02:58", Color(0xFF6FD08C), DEMO_AUDIO + "6.mp3"),
+        Song("7", "漂浮", "Aero", "Low Gravity", "04:05", Color(0xFFF5B942), DEMO_AUDIO + "7.mp3"),
+        Song("8", "静默频率", "深海电台", "FM 96.7", "06:11", Color(0xFF5AC8FA), DEMO_AUDIO + "8.mp3")
     )
 
     val playlists = listOf(

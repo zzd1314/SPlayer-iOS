@@ -59,13 +59,14 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TAG=android-v0.1.0
+          TAG=android-v0.2.0
           APK=$(ls android/app/build/outputs/apk/debug/*.apk | head -n1)
-          cp "$APK" splayer-next-android-v0.1.0-debug.apk
+          cp "$APK" splayer-next-android-v0.2.0-debug.apk
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" splayer-next-android-v0.1.0-debug.apk --clobber
+            gh release upload "$TAG" splayer-next-android-v0.2.0-debug.apk --clobber
           else
-            gh release create "$TAG" splayer-next-android-v0.1.0-debug.apk \
-              --title "SPlayer Next Android v0.1.0" \
-              --notes "SPlayer Next 安卓端 MVP（Debug APK）：Compose 液态玻璃界面、首页/曲库/发现/我的、底部播放栏与玻璃/经典风格切换，数据为内置示例。"
+            gh release create "$TAG" splayer-next-android-v0.2.0-debug.apk \
+              --target "$GITHUB_SHA" \
+              --title "SPlayer Next Android v0.2.0" \
+              --notes "SPlayer Next 安卓端 v0.2.0（Debug APK）：Media3 真实播放内核与后台播放通知、网易云搜索/新歌/推荐歌单（失败自动回退示例）、切页动画与按压缩放反馈、主题色与深浅色配置。"
           fi
