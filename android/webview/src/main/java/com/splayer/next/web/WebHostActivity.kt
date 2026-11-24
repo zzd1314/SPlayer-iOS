@@ -4,8 +4,11 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.util.Log
 import android.view.KeyEvent
 import android.view.ViewGroup
+import android.webkit.ConsoleMessage
+import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
@@ -71,6 +74,14 @@ class WebHostActivity : AppCompatActivity() {
             override fun doUpdateVisitedHistory(view: WebView, url: String, isReload: Boolean) {
                 bridge.onHistoryChanged()
                 super.doUpdateVisitedHistory(view, url, isReload)
+            }
+        }
+
+        // 渲染层 console 输出同步到 logcat，便于无 adb 之外的现场排查
+        webView.webChromeClient = object : WebChromeClient() {
+            override fun onConsoleMessage(msg: ConsoleMessage): Boolean {
+                Log.d("SPlayerWeb", "${msg.message()} (${msg.sourceId()}:${msg.lineNumber()})")
+                return true
             }
         }
 
@@ -163,7 +174,10 @@ class RendererAssetHandler(private val context: Context) : WebViewAssetLoader.Pa
             if (clean == "index.html") {
                 val html = context.assets.open("web/index.html")
                     .bufferedReader().use { it.readText() }
-                val injected = html.replace(Regex("<head([^>]*)>")) { match ->
+                // Vite 产物带 crossorigin，WebView 内以 CORS 模式加载会退化成 "Script error."
+                // 同源资源无需该属性，移除后可拿到完整错误堆栈
+                val stripped = html.replace(Regex("<script[^>]*>")) { it.value.replace(" crossorigin", "") }
+                val injected = stripped.replace(Regex("<head([^>]*)>")) { match ->
                     match.value + "<script src=\"/assets/bridge.js\"></script>" + BOOT_GUARD
                 }
                 response("text/html", injected.toByteArray())
@@ -214,11 +228,17 @@ private const val BOOT_GUARD = """
 <script>
 (function () {
   var errors = [];
+  var counts = {};
   function report(msg) {
     try {
       var text = String(msg && msg.stack ? msg.stack : msg).slice(0, 2000);
-      errors.push(text);
-      if (errors.length > 20) errors.shift();
+      if (counts[text]) {
+        counts[text]++;
+      } else {
+        counts[text] = 1;
+        errors.push(text);
+        if (errors.length > 20) delete counts[errors.shift()];
+      }
       if (window.SPlayerNative && window.SPlayerNative.call) {
         try {
           window.SPlayerNative.call('system', 'reportBootError', 'boot-' + Date.now(), JSON.stringify([text]));
@@ -226,8 +246,13 @@ private const val BOOT_GUARD = """
       }
     } catch (e) {}
   }
+  function describe(e) {
+    var where = e.filename ? '  @ ' + e.filename + ':' + (e.lineno || 0) + ':' + (e.colno || 0) : '';
+    var detail = e.error && e.error.stack ? e.error.stack : (e.message || String(e.error));
+    return detail + where;
+  }
   window.__splayerBootErrors = errors;
-  window.addEventListener('error', function (e) { report(e.error || e.message); });
+  window.addEventListener('error', function (e) { report(describe(e)); });
   window.addEventListener('unhandledrejection', function (e) { report(e.reason); });
   var rawError = console.error;
   console.error = function () {
@@ -250,7 +275,12 @@ private const val BOOT_GUARD = """
     meta.textContent = 'URL: ' + location.href + '\nUA: ' + navigator.userAgent;
     var list = document.createElement('div');
     list.style.cssText = 'white-space:pre-wrap;word-break:break-all';
-    list.textContent = errors.length ? errors.join('\n\n') : '(未捕获到 JS 错误：可能是桥接调用无响应)';
+    list.textContent = errors.length
+      ? errors.map(function (t) { return (counts[t] > 1 ? '[' + counts[t] + '] ' : '') + t; }).join('\n\n')
+      : '(未捕获到 JS 错误：可能是桥接调用无响应)';
+    var probe = document.createElement('div');
+    probe.style.cssText = 'white-space:pre-wrap;word-break:break-all;margin-top:14px;opacity:.85';
+    probe.textContent = '正在检查脚本加载…';
     var button = document.createElement('button');
     button.textContent = '重新加载';
     button.style.cssText = 'margin-top:16px;padding:8px 16px;border-radius:8px;border:0;background:#fe7971;color:#101014;font-weight:700';
@@ -258,8 +288,32 @@ private const val BOOT_GUARD = """
     box.appendChild(title);
     box.appendChild(meta);
     box.appendChild(list);
+    box.appendChild(probe);
     box.appendChild(button);
     document.body.appendChild(box);
+    var targets = ['/assets/bridge.js', '/assets/netease-api.js', '/assets/streaming-api.js'];
+    var nodes = document.querySelectorAll('script[src]');
+    for (var i = 0; i < nodes.length; i++) targets.push(nodes[i].getAttribute('src'));
+    var seenUrl = {};
+    var lines = [];
+    var tasks = [];
+    for (var j = 0; j < targets.length; j++) {
+      var url = targets[j];
+      if (!url || seenUrl[url]) continue;
+      seenUrl[url] = true;
+      tasks.push((function (u) {
+        return fetch(u, { cache: 'no-store' }).then(function (r) {
+          return r.text().then(function (body) {
+            lines.push(u + ' → ' + r.status + ' ' + (r.headers.get('content-type') || '?') + ' ' + body.length + 'B');
+          });
+        }).catch(function (err) {
+          lines.push(u + ' → 请求失败: ' + (err && err.message));
+        });
+      })(url));
+    }
+    Promise.all(tasks).then(function () {
+      probe.textContent = '脚本加载检查:\n' + (lines.length ? lines.join('\n') : '(无可检查脚本)');
+    });
   }
   setTimeout(showPanel, 8000);
 })();
