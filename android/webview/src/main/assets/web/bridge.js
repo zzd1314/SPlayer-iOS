@@ -11,14 +11,19 @@
   let seq = 0
   const listeners = new Map()
 
-  // 窄屏适配：上游设置弹窗左栏固定 280px，手机宽度下会把右栏挤成竖排文字
+  // 窄屏适配：上游设置弹窗左栏固定 280px、右侧设置项又是「文字 + 固定 200px 控件」两列，
+  // 手机宽度下右栏被挤成竖排。这里只做窄屏收窄与换行，不改任何上游样式与功能
   const mobileCss = `
 @media (max-width: 720px) {
-  [role="dialog"] .w-70 { width: 148px !important; padding: 12px 8px !important; }
-  [role="dialog"] .w-70 .text-2xl { font-size: 16px !important; line-height: 1.35 !important; }
-  [role="dialog"] .w-70 .text-sm { font-size: 11px !important; margin-bottom: 10px !important; }
+  [role="dialog"]:has(.w-70) { width: calc(100vw - 12px) !important; max-width: none !important; }
+  [role="dialog"] .w-70 { width: 116px !important; padding: 12px 6px !important; }
+  [role="dialog"] .w-70 .text-2xl { font-size: 15px !important; line-height: 1.3 !important; }
+  [role="dialog"] .w-70 .text-sm { font-size: 10px !important; margin-bottom: 8px !important; }
   [role="dialog"] .w-70 .px-3 { padding-left: 6px !important; padding-right: 6px !important; }
-  [role="dialog"] .flex-1.overflow-y-auto.py-6.px-8 { padding: 16px 14px !important; }
+  [role="dialog"] .w-70 .gap-2 { gap: 6px !important; }
+  [role="dialog"] .py-6.px-8 { padding: 14px 10px !important; }
+  [role="dialog"] .py-6.px-8 .justify-between { flex-wrap: wrap !important; }
+  [role="dialog"] .py-6.px-8 .justify-between > .shrink-0 { width: 100% !important; justify-content: flex-start !important; }
 }
 `
   const mobileStyle = document.createElement('style')
