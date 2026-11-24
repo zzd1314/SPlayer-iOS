@@ -2,6 +2,7 @@ name: rust-android (experimental)
 
 # 实验 workflow：验证 ffmpeg-audio（audio-engine 的解码核心）能否交叉编译为
 # aarch64-linux-android 动态库。不影响主发布流程（android.yml）。
+# 失败时会把构建日志尾部写入诊断 issue，便于无日志权限时定位问题。
 on:
   push:
     branches: [android]
@@ -12,6 +13,7 @@ on:
 
 permissions:
   contents: read
+  issues: write
 
 jobs:
   build:
@@ -35,21 +37,49 @@ jobs:
           targets: aarch64-linux-android
 
       - name: Build cdylib for aarch64-linux-android
+        id: rustbuild
+        continue-on-error: true
         working-directory: tools/rust-android-test
         run: |
-          set -e
+          set +e
           NDK="${ANDROID_NDK_LATEST_HOME:-}"
           if [ -z "$NDK" ]; then NDK="$ANDROID_HOME/ndk/$(ls "$ANDROID_HOME/ndk" | sort -V | tail -n 1)"; fi
-          echo "Using NDK: $NDK"
           TOOL="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin"
           export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$TOOL/aarch64-linux-android24-clang"
           export CC_aarch64_linux_android="$TOOL/aarch64-linux-android24-clang"
           export AR_aarch64_linux_android="$TOOL/llvm-ar"
-          export LIBCLANG_PATH=$(ls -d /usr/lib/llvm-*/lib | sort -V | tail -n 1)
-          echo "LIBCLANG_PATH=$LIBCLANG_PATH"
-          cargo build --release --target aarch64-linux-android
+          export LIBCLANG_PATH=$(ls -d /usr/lib/llvm-*/lib 2>/dev/null | sort -V | tail -n 1)
+          {
+            echo "NDK=$NDK"
+            echo "LIBCLANG_PATH=$LIBCLANG_PATH"
+            ls "$TOOL" | head -n 20
+            cargo build --release --target aarch64-linux-android
+          } > rust-build.log 2>&1
+          code=$?
+          tail -n 100 rust-build.log
+          echo "exit=$code"
+          exit $code
+
+      - name: Report failure to diagnostic issue
+        if: steps.rustbuild.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          {
+            echo "CI Rust ARM64 构建失败（commit $GITHUB_SHA），日志尾部："
+            echo '```'
+            tail -n 200 rust-build.log 2>/dev/null || echo "(日志文件缺失)"
+            echo '```'
+          } > diag.md
+          ISSUE=$(gh issue list --state open --search "CI 诊断：Rust ARM64 构建 in:title" --json number --jq '.[0].number' 2>/dev/null || true)
+          if [ -z "$ISSUE" ]; then
+            gh issue create --title "CI 诊断：Rust ARM64 构建" --body-file diag.md
+          else
+            gh issue comment "$ISSUE" --body-file diag.md
+          fi
 
       - name: Inspect artifact
+        if: steps.rustbuild.outcome == 'success'
         run: |
           SO=tools/rust-android-test/target/aarch64-linux-android/release/librust_android_test.so
           file "$SO"
@@ -58,6 +88,7 @@ jobs:
           du -h "$SO"
 
       - name: Upload .so artifact
+        if: steps.rustbuild.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
           name: librust_android_test-arm64
