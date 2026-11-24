@@ -2,7 +2,7 @@ package com.splayer.next.web.playback
 
 import android.content.Context
 import android.content.Intent
-import android.media.Visualizer
+import android.media.audiofx.Visualizer
 import android.os.Handler
 import android.os.Looper
 import androidx.media3.common.MediaItem
@@ -194,7 +194,7 @@ object PlaybackEngine {
         }
     }
 
-    // MARK: - FFT 频谱（android.media.Visualizer）
+    // MARK: - FFT 频谱（android.media.audiofx.Visualizer）
 
     /** 原版 Rust 引擎自算 FFT；Android 端用系统 Visualizer 提供同规格数据（256 点） */
     private var visualizer: Visualizer? = null
@@ -209,7 +209,7 @@ object PlaybackEngine {
         runCatching {
             val viz = Visualizer(audioSessionId)
             viz.setEnabled(true)
-            viz.captureCallBack(object : Visualizer.OnDataCaptureListener {
+            viz.setDataCaptureListener(object : Visualizer.OnDataCaptureListener {
                 override fun onWaveFormDataCapture(v: Visualizer?, waveform: ByteArray?, samplingRate: Int) {}
                 override fun onFftDataCapture(v: Visualizer?, fft: ByteArray?, samplingRate: Int) {
                     if (fft == null) return
@@ -232,7 +232,7 @@ object PlaybackEngine {
                         fftRight = r
                     }
                 }
-            }, android.media.Visualizer.getMaxCaptureRate() / 2, true)
+            }, android.media.audiofx.Visualizer.getMaxCaptureRate() / 2, false, true)
             visualizer = viz
         }.onFailure {
             // RECORD_AUDIO 未授权或无 audioSession：频谱保持空数据
@@ -254,7 +254,7 @@ object PlaybackEngine {
             if (active) {
                 runCatching {
                     ensureVisualizer(player?.audioSessionId ?: 0)
-                    visualizer?.enabled = active
+                    visualizer?.setEnabled(active)
                 }
             }
             return
