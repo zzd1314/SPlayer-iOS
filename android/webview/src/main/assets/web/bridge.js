@@ -219,6 +219,22 @@
     },
   })
 
+  /** 缓存：song / download 为二级命名空间（preload 契约） */
+  const cacheNs = new Proxy({}, {
+    get(_t, prop) {
+      if (typeof prop !== 'string' || prop === 'then' || prop === 'toJSON') return undefined
+      if (prop === 'song') {
+        return {
+          lookup: (key) => call('cache', 'song:lookup', [key]),
+          fetch: (key, source, url, preloadId) => call('cache', 'song:fetch', [key, source, url, preloadId]),
+          cancel: (key) => call('cache', 'song:cancel', [key]),
+        }
+      }
+      if (prop.startsWith('on')) return (cb) => subscribe('cache', prop, cb)
+      return (...args) => call('cache', prop, args)
+    },
+  })
+
   window.api = new Proxy({}, {
     get(_t, ns) {
       if (typeof ns !== 'string' || ns === 'then' || ns === 'toJSON') return undefined
@@ -226,6 +242,7 @@
       if (ns === 'apis') return apisNs
       if (ns === 'lyrics') return lyricsNs
       if (ns === 'streaming') return streamingNs
+      if (ns === 'cache') return cacheNs
       return makeNs(ns)
     },
   })
