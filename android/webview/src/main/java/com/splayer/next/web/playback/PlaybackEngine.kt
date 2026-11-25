@@ -365,6 +365,8 @@ object PlaybackEngine {
             "seek" -> {
                 val position = (args.getOrNull(0) as? Number)?.toLong() ?: 0L
                 player?.seekTo(position.coerceAtLeast(0L))
+                // 立即刷新原生歌词锚点，暂停态拖动进度时悬浮窗也能跟上
+                NowPlayingState.onPosition(position.coerceAtLeast(0L), player?.isPlaying == true)
                 pushEvent("seek", mapOf("position" to position))
                 success
             }
