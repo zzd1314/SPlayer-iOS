@@ -138,10 +138,11 @@
   let neteasePromise = null
   const loadNetease = () => {
     if (!neteasePromise) {
-      neteasePromise = import('/assets/assets/netease-api.js').then(() => {
-        // entry.ts 通过 globalThis.__Netease 暴露接口；dynamic import 下 esbuild
-        // 的 global-name 变量只存在于模块作用域，window.NeteaseBridge 不可见
-        const b = window.__Netease || window.NeteaseBridge
+      neteasePromise = import('/assets/assets/netease-api.js').then((mod) => {
+        // 入口模块不依赖顶层 await（旧版 WebView 不支持 TLA），改为导出 ready Promise；
+        // 老版本模块没有 default 时回退到全局变量
+        return mod && mod.default ? mod.default : (window.__Netease || window.NeteaseBridge)
+      }).then((b) => {
         if (!b) throw new Error('netease-api.js 未暴露 __Netease')
         return {
           call: async (platform, name, params) => {
