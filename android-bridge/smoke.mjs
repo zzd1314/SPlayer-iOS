@@ -486,7 +486,23 @@ globalThis.window = globalThis;
 globalThis.self = globalThis;
 // 模拟 bridge.js 暴露的 window.api.player.onEvent，用于驱动播放上报
 const playerListeners = [];
-globalThis.api = { player: { onEvent: (cb) => playerListeners.push(cb) } };
+// 模拟原生 Android Keystore 通道（SecureStore）
+const sealedValues = new Map();
+globalThis.api = {
+  player: { onEvent: (cb) => playerListeners.push(cb) },
+  system: {
+    secureEncrypt: async (plain) => {
+      const sealed = Buffer.from(String(plain), "utf8").toString("base64");
+      sealedValues.set(sealed, String(plain));
+      return { value: sealed };
+    },
+    secureDecrypt: async (sealed) => {
+      const plain = sealedValues.get(String(sealed));
+      if (plain === undefined) throw new Error("decrypt failed");
+      return { value: plain };
+    },
+  },
+};
 const emitPlayer = (type, data = {}) => {
   for (const cb of [...playerListeners]) cb({ type, data });
 };
@@ -609,7 +625,14 @@ const run = async () => {
   const configRaw = storage.getItem("splayer:file:/config/streaming.json") ?? "";
   check("配置写入假文件", () => configRaw.includes("safe:v1:"));
   check("配置不含明文密码", () => configRaw.length > 0 && !configRaw.includes("secret"));
-  check("安全存储密钥已生成", () => Boolean(storage.getItem("splayer:sec-key")));
+  check("密码密文来自 Keystore", () => {
+    const persisted = JSON.parse(configRaw);
+    const envelope = persisted.servers?.[0]?.encryptedPassword ?? "";
+    if (!envelope.startsWith("safe:v1:")) return false;
+    const inner = Buffer.from(envelope.slice("safe:v1:".length), "base64").toString("utf8");
+    return inner.startsWith("keystore:v1:");
+  });
+  check("Keystore 模式不落旧随机密钥", () => !storage.getItem("splayer:sec-key"));
 
   await handle("setActiveServer", sub.id);
   const active = await handle("loadServers");
