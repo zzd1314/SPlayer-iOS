@@ -17,7 +17,7 @@ const PARTS = [
 
 const texts = await Promise.all(
   PARTS.map((name) =>
-    fetch('/assets/' + name).then((res) => {
+    fetch('/assets/assets/' + name).then((res) => {
       if (!res.ok) throw new Error('netease-api 分片加载失败: ' + name + ' (' + res.status + ')')
       return res.text()
     }),
