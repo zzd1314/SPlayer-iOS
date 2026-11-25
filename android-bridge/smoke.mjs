@@ -60,6 +60,9 @@ const subState = {
   favorites: new Set(["s2"]),
 };
 
+/** 记录 Subsonic scrobble 上报（start 与正式打卡） */
+const subScrobbles = [];
+
 const subSongs = [
   {
     id: "s1",
@@ -238,6 +241,11 @@ const subsonicServer = http.createServer(async (req, res) => {
     case "getCoverArt":
       return sendBytes(res, PNG, "image/png");
     case "scrobble":
+      subScrobbles.push({
+        id: url.searchParams.get("id"),
+        time: url.searchParams.get("time"),
+        submission: url.searchParams.get("submission"),
+      });
       return ok({});
     default:
       return sendJson(res, { error: `unsupported endpoint ${endpoint}` }, 404);
@@ -476,6 +484,20 @@ const waiters = [];
 globalThis.localStorage = storage;
 globalThis.window = globalThis;
 globalThis.self = globalThis;
+// 模拟 bridge.js 暴露的 window.api.player.onEvent，用于驱动播放上报
+const playerListeners = [];
+globalThis.api = { player: { onEvent: (cb) => playerListeners.push(cb) } };
+const emitPlayer = (type, data = {}) => {
+  for (const cb of [...playerListeners]) cb({ type, data });
+};
+const waitFor = async (predicate, timeout = 3000) => {
+  const start = Date.now();
+  while (Date.now() - start < timeout) {
+    if (predicate()) return true;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  return predicate();
+};
 globalThis.__splayerDispatch = (channel, payload) => {
   events.push({ channel, payload });
   for (const waiter of [...waiters]) {
@@ -550,7 +572,7 @@ const run = async () => {
   const bridge = globalThis.StreamingBridge;
   check("暴露 StreamingBridge", () => Boolean(bridge));
   check("契约方法齐全", () =>
-    ["setNativeCall", "handle", "resolveSource", "resolveDownload", "coverUrl"].every(
+    ["setNativeCall", "handle", "resolveSource", "resolveDownload", "coverUrl", "playbackStop"].every(
       (key) => typeof bridge?.[key] === "function",
     ),
   );
@@ -697,6 +719,35 @@ const run = async () => {
   check("Subsonic headers 可为空", () =>
     !subSource.headers || Object.keys(subSource.headers).length === 0,
   );
+
+  // ----- 播放上报（scrobble）：start → 达标正式打卡 → stopped 收尾 -----
+  subScrobbles.length = 0;
+  const subPlay = await bridge.resolveSource(subStreamingUrl, { playback: true });
+  check("播放解析返回 sessionId", () =>
+    typeof subPlay.sessionId === "string" && subPlay.sessionId.length > 0,
+  );
+  emitPlayer("status", { state: "playing", position: 0, duration: 2000 });
+  const startSeen = await waitFor(() =>
+    subScrobbles.some((item) => item.submission === "false" && item.id === "s1"),
+  );
+  check("Subsonic start 上报", () => startSeen);
+  await new Promise((resolve) => setTimeout(resolve, 1100));
+  emitPlayer("position", { position: 1100, duration: 2000 });
+  const scrobbleSeen = await waitFor(() =>
+    subScrobbles.some((item) => item.submission === "true" && item.id === "s1"),
+  );
+  check("Subsonic 收听达标后正式打卡", () => scrobbleSeen);
+  const scrobbleTime = Number(subScrobbles.find((item) => item.submission === "true")?.time ?? 0);
+  check("打卡时间戳为毫秒时间", () => scrobbleTime > 1_600_000_000_000);
+  emitPlayer("status", { state: "stopped", position: 1200, duration: 2000 });
+  let stopError = null;
+  try {
+    await bridge.playbackStop();
+    await bridge.playbackStop();
+  } catch (error) {
+    stopError = error;
+  }
+  check("重复 playbackStop 安全", () => stopError === null);
 
   const subDownload = await bridge.resolveDownload(subStreamingUrl);
   check("Subsonic resolveDownload 返回 http", () =>
