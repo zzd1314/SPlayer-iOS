@@ -24,6 +24,7 @@ class BridgeRouter(private val context: Context, private val bridge: Any?) {
     init {
         val b = bridge as? com.splayer.next.web.SPlayerBridge
         DownloadManager.init(context, b)
+        UpdateManager.init(context, b)
         com.splayer.next.web.SPlayerBridge.activate(b)
         LibraryStore.shared(context)
         NowPlayingState.init(context)
@@ -42,6 +43,7 @@ class BridgeRouter(private val context: Context, private val bridge: Any?) {
         "library" -> libraryStore.handle(method, args)
         "playlist" -> playlistStore.handle(method, args)
         "download" -> DownloadManager.handle(method, args)
+        "update" -> UpdateManager.handle(method, args)
         "nowPlaying" -> NowPlayingState.handle(method, args)
         "cache" -> CacheManager.handle(method, args)
         "desktopLyric" -> dispatchDesktopLyric(method)
