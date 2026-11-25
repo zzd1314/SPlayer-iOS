@@ -5,6 +5,7 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.http.SslError
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
@@ -12,6 +13,7 @@ import android.util.Log
 import android.view.KeyEvent
 import android.view.ViewGroup
 import android.webkit.ConsoleMessage
+import android.webkit.SslErrorHandler
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
@@ -36,6 +38,10 @@ class WebHostActivity : AppCompatActivity() {
         private const val REQ_RECORD_AUDIO = 4003
         private const val REQ_OVERLAY = 4004
         private const val REQ_PICK_COVER = 4005
+
+        /** 内置渲染层的虚拟主机：不允许放行任何证书错误 */
+        private const val ASSET_HOST = "appassets.androidplatform.net"
+        private const val SSL_PREFS = "splayer_webview_ssl"
 
         @Volatile
         private var current: WeakReference<WebHostActivity>? = null
@@ -119,6 +125,38 @@ class WebHostActivity : AppCompatActivity() {
                 bridge.onHistoryChanged()
                 super.doUpdateVisitedHistory(view, url, isReload)
             }
+
+            /**
+             * 自签 HTTPS 支持：用户自建的流媒体服务器常用自签名证书，
+             * 默认 WebView 会直接拒绝。这里对非内置资源的主机弹窗询问，
+             * 确认后按主机记住，避免每次播放/拉封面都打断。
+             */
+            override fun onReceivedSslError(
+                view: WebView,
+                handler: SslErrorHandler,
+                error: SslError
+            ) {
+                val host = runCatching { android.net.Uri.parse(error.url).host }.getOrNull()
+                if (host == null || host == ASSET_HOST || isFinishing || isDestroyed) {
+                    handler.cancel()
+                    return
+                }
+                if (trustedSslHosts().getBoolean(sslKey(host), false)) {
+                    handler.proceed()
+                    return
+                }
+                Log.w("SPlayerWeb", "自签证书拦截: $host (primaryError=${error.primaryError})")
+                android.app.AlertDialog.Builder(this@WebHostActivity)
+                    .setTitle("不受信任的证书")
+                    .setMessage("$host 的 HTTPS 证书无法验证（通常是自签名证书）。\n\n只有在你确认这是自己的流媒体服务器时才继续。")
+                    .setCancelable(false)
+                    .setPositiveButton("信任并继续") { _, _ ->
+                        trustedSslHosts().edit().putBoolean(sslKey(host), true).apply()
+                        handler.proceed()
+                    }
+                    .setNegativeButton("取消") { _, _ -> handler.cancel() }
+                    .show()
+            }
         }
 
         // 渲染层 console 输出同步到 logcat，便于无 adb 之外的现场排查
@@ -145,6 +183,12 @@ class WebHostActivity : AppCompatActivity() {
         }
         return super.onKeyDown(keyCode, event)
     }
+
+    // MARK: - 自签 HTTPS 主机白名单
+
+    private fun trustedSslHosts() = getSharedPreferences(SSL_PREFS, Context.MODE_PRIVATE)
+
+    private fun sslKey(host: String) = "trust_$host"
 
     // MARK: - 通知权限（Android 13+ 媒体通知必需）
 
@@ -367,7 +411,7 @@ private const val BOOT_GUARD = """
     box.appendChild(probe);
     box.appendChild(button);
     document.body.appendChild(box);
-    var targets = ['/assets/bridge.js', '/assets/netease-api.js', '/assets/streaming-api.js'];
+    var targets = ['/assets/bridge.js', '/assets/assets/netease-api.js', '/assets/assets/streaming-api.js'];
     var nodes = document.querySelectorAll('script[src]');
     for (var i = 0; i < nodes.length; i++) targets.push(nodes[i].getAttribute('src'));
     var seenUrl = {};
