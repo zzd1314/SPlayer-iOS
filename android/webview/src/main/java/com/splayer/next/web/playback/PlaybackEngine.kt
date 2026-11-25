@@ -21,6 +21,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import com.splayer.next.web.Json
 import com.splayer.next.web.SPlayerBridge
 import com.splayer.next.web.api.BridgeUnsupportedException
+import com.splayer.next.web.nowplaying.NowPlayingState
 import java.io.File
 import java.nio.ByteBuffer
 import java.nio.charset.CharacterCodingException
@@ -221,6 +222,7 @@ object PlaybackEngine {
         override fun run() {
             val p = player ?: return
             if (p.isPlaying) {
+                NowPlayingState.onPosition(p.currentPosition, true)
                 pushEvent(
                     "position",
                     mapOf("position" to p.currentPosition, "duration" to p.duration.coerceAtLeast(0))
@@ -298,6 +300,11 @@ object PlaybackEngine {
         if (stateOverride != null) snapshot["state"] = stateOverride
         if (positionOverride != null) snapshot["position"] = positionOverride
         if (durationOverride != null) snapshot["duration"] = durationOverride
+        NowPlayingState.syncStatus(
+            state = snapshot["state"] as? String ?: "idle",
+            positionMs = (snapshot["position"] as? Number)?.toLong() ?: 0L,
+            speedValue = (snapshot["speed"] as? Number)?.toDouble() ?: 1.0,
+        )
         pushEvent("status", snapshot)
     }
 
