@@ -10,6 +10,8 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- 实时 FFT 频谱（android.media.Visualizer）必需 -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- 桌面悬浮歌词 -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 
     <application
         android:allowBackup="true"
@@ -41,5 +43,9 @@
                 <action android:name="androidx.media3.session.MediaSessionService" />
             </intent-filter>
         </service>
+
+        <service
+            android:name=".lyric.DesktopLyricService"
+            android:exported="false" />
     </application>
 </manifest>
