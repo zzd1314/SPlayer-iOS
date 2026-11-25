@@ -7,6 +7,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import android.util.Log
 import android.view.KeyEvent
 import android.view.ViewGroup
@@ -33,6 +34,7 @@ class WebHostActivity : AppCompatActivity() {
         private const val REQ_PICK_DIR = 4001
         private const val REQ_NOTIFICATION = 4002
         private const val REQ_RECORD_AUDIO = 4003
+        private const val REQ_OVERLAY = 4004
 
         @Volatile
         private var current: WeakReference<WebHostActivity>? = null
@@ -47,6 +49,22 @@ class WebHostActivity : AppCompatActivity() {
             }
             runCatching {
                 activity.requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), REQ_RECORD_AUDIO)
+            }
+        }
+
+        /** 桌面悬浮歌词需要悬浮窗权限：走系统设置页授权（非运行时权限） */
+        fun requestOverlayPermissionIfNeeded() {
+            val activity = current?.get() ?: return
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return
+            if (Settings.canDrawOverlays(activity)) return
+            runCatching {
+                activity.startActivityForResult(
+                    Intent(
+                        Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                        android.net.Uri.parse("package:${activity.packageName}"),
+                    ),
+                    REQ_OVERLAY,
+                )
             }
         }
     }
