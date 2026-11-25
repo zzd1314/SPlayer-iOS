@@ -541,7 +541,13 @@ object PlaybackEngine {
 
     private fun setFftEnabled(enabled: Boolean) {
         fftEnabled = enabled
-        if (enabled) startFftIfNeeded() else releaseFftCapture()
+        if (enabled) {
+            // Visualizer 依赖录音权限：首次启用频谱时再申请
+            com.splayer.next.web.WebHostActivity.requestRecordAudioPermissionIfNeeded()
+            startFftIfNeeded()
+        } else {
+            releaseFftCapture()
+        }
     }
 
     private fun startFftIfNeeded() {
