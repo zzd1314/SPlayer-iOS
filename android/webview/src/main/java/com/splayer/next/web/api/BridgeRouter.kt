@@ -144,6 +144,8 @@ class BridgeRouter(private val context: Context, private val bridge: Any?) {
         }
 
         "fetchRemoteBytes" -> RemoteBytes.fetch(args.getOrNull(0) as? String ?: "")
+        "secureEncrypt" -> mapOf("value" to SecureStore.encrypt(args.getOrNull(0)?.toString().orEmpty()))
+        "secureDecrypt" -> mapOf("value" to SecureStore.decrypt(args.getOrNull(0)?.toString().orEmpty()))
         "bridgeHttp" -> BridgeHttp.request(
             url = args.getOrNull(0) as? String ?: "",
             method = args.getOrNull(1) as? String ?: "GET",
