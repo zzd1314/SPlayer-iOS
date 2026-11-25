@@ -3,7 +3,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "esbuild src/entry.ts --bundle --platform=browser --format=iife --global-name=NeteaseBridge --outfile=../splayer-android/android/webview/src/main/assets/web/netease-api.js --inject:./src/shim.cjs --define:global=globalThis --define:process.env.NODE_ENV='\"production\"' --alias:@main=../electron/main --alias:@main/utils/proxy=./src/stubs/proxy.ts --alias:@main/utils/logger=./src/stubs/logger.ts --alias:@main/store=./src/stubs/store.ts --alias:@main/database=./src/stubs/database.ts --alias:electron=./src/stubs/electron.ts --alias:@main/window/main=./src/stubs/windowmain.ts --alias:node:crypto=crypto-browserify --alias:node:os=./src/stubs/os.ts --alias:node:zlib=./src/stubs/zlib.ts --alias:stream=readable-stream --alias:path=path-browserify --alias:util=util --tsconfig=tsconfig.json --log-level=info"
+    "build": "esbuild src/entry.ts --bundle --platform=browser --format=iife --global-name=NeteaseBridge --outfile=../splayer-android/android/webview/src/main/assets/web/netease-api.js --inject:./src/shim.cjs --define:global=globalThis --define:process.env.NODE_ENV='\"production\"' --alias:@main=../electron/main --alias:@main/utils/proxy=./src/stubs/proxy.ts --alias:@main/utils/logger=./src/stubs/logger.ts --alias:@main/store=./src/stubs/store.ts --alias:@main/database=./src/stubs/database.ts --alias:electron=./src/stubs/electron.ts --alias:@main/window/main=./src/stubs/windowmain.ts --alias:node:crypto=crypto-browserify --alias:node:os=./src/stubs/os.ts --alias:node:zlib=./src/stubs/zlib.ts --alias:stream=readable-stream --alias:path=path-browserify --alias:util=util --tsconfig=tsconfig.json --log-level=info",
+    "build:streaming": "node build-streaming.mjs",
+    "smoke": "node smoke.mjs"
   },
   "devDependencies": {
     "esbuild": "^0.25.0",
