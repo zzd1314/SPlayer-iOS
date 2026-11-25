@@ -147,17 +147,69 @@ class LibraryStore(context: Context) {
         }
         "readTags" -> readTags(str(args, 0))
         "writeTags" -> throw BridgeUnsupportedException(
-            "library.writeTags：Android 端暂不支持写文件标签（待后续版本引入标签库）",
+            "library.writeTags：Android 端暂不支持写入文件标签（系统媒体库不开放内嵌标签写入）",
         )
-        "pickCoverImage" -> throw BridgeUnsupportedException(
-            "library.pickCoverImage：待接入系统图片选择器",
-        )
+        "pickCoverImage" -> pickCoverImage()
         "fetchArtistAvatar" -> null
         "prefetchArtistAvatars" -> null
         else -> throw BridgeUnsupportedException("library.$method 暂未在 Android 端实现")
     }
 
     private fun str(args: List<Any?>, i: Int): String = args.getOrNull(i)?.toString() ?: ""
+
+    // MARK: - 封面选择
+
+    /**
+     * 系统图片选择器选择封面：返回原始文件缓存路径 + 300px 缩略图 dataUrl。
+     * 与上游 library:pickCoverImage 返回结构一致（{success,data:{path,dataUrl}}）。
+     */
+    private fun pickCoverImage(): Map<String, Any?> {
+        val picked = SPlayerBridge.active?.requestPickImage()
+            ?: return mapOf("success" to false, "error" to "FILE_NOT_SELECTED")
+        val uri = Uri.parse(picked)
+        val resolver = appContext.contentResolver
+        return runCatching {
+            val mime = resolver.getType(uri) ?: "image/jpeg"
+            val bytes = resolver.openInputStream(uri)?.use { it.readBytes() }
+                ?: return mapOf("success" to false, "error" to "TAG_WRITE_FAILED")
+            if (bytes.size > 5 * 1024 * 1024) {
+                return mapOf("success" to false, "error" to "TAG_WRITE_FAILED")
+            }
+            val bitmap = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                ?: return mapOf("success" to false, "error" to "TAG_WRITE_FAILED")
+            val longest = maxOf(bitmap.width, bitmap.height).coerceAtLeast(1)
+            val scale = (300f / longest).coerceAtMost(1f)
+            val thumb = if (scale < 1f) {
+                android.graphics.Bitmap.createScaledBitmap(
+                    bitmap,
+                    (bitmap.width * scale).toInt().coerceAtLeast(1),
+                    (bitmap.height * scale).toInt().coerceAtLeast(1),
+                    true,
+                )
+            } else {
+                bitmap
+            }
+            val out = java.io.ByteArrayOutputStream()
+            thumb.compress(android.graphics.Bitmap.CompressFormat.JPEG, 85, out)
+            val dataUrl = "data:image/jpeg;base64," +
+                android.util.Base64.encodeToString(out.toByteArray(), android.util.Base64.NO_WRAP)
+
+            val dir = File(appContext.cacheDir, "picked_covers").apply { mkdirs() }
+            val ext = when {
+                mime.contains("png") -> "png"
+                mime.contains("webp") -> "webp"
+                else -> "jpg"
+            }
+            val file = File(dir, "cover_${System.currentTimeMillis()}.$ext")
+            file.writeBytes(bytes)
+            mapOf(
+                "success" to true,
+                "data" to linkedMapOf("path" to file.absolutePath, "dataUrl" to dataUrl),
+            )
+        }.getOrElse {
+            mapOf("success" to false, "error" to "TAG_WRITE_FAILED")
+        }
+    }
 
     // MARK: - 扫描
 
