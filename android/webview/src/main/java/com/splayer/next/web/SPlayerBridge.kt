@@ -127,4 +127,29 @@ class SPlayerBridge(private val host: WebHostActivity, private val context: Cont
 
     internal fun awaitPick(): kotlinx.coroutines.CompletableDeferred<String?> =
         kotlinx.coroutines.CompletableDeferred<String?>().also { pendingPick = it }
+
+    /**
+     * SAF 图片选择（library.pickCoverImage）：发起系统文件选择器并阻塞等待，
+     * 结果由 Activity 的 onCoverImagePicked 回填，超时 120s 视为取消。
+     */
+    fun requestPickImage(): String? {
+        val deferred = awaitImagePick()
+        host.launchCoverPicker()
+        return runCatching {
+            kotlinx.coroutines.runBlocking {
+                kotlinx.coroutines.withTimeoutOrNull(120_000) { deferred.await() }
+            }
+        }.getOrNull()
+    }
+
+    /** Activity 拿到图片选择结果后回填 */
+    fun onCoverImagePicked(uri: String?) {
+        pendingImagePick?.complete(uri)
+        pendingImagePick = null
+    }
+
+    private var pendingImagePick: kotlinx.coroutines.CompletableDeferred<String?>? = null
+
+    internal fun awaitImagePick(): kotlinx.coroutines.CompletableDeferred<String?> =
+        kotlinx.coroutines.CompletableDeferred<String?>().also { pendingImagePick = it }
 }
