@@ -35,6 +35,7 @@ class WebHostActivity : AppCompatActivity() {
         private const val REQ_NOTIFICATION = 4002
         private const val REQ_RECORD_AUDIO = 4003
         private const val REQ_OVERLAY = 4004
+        private const val REQ_PICK_COVER = 4005
 
         @Volatile
         private var current: WeakReference<WebHostActivity>? = null
@@ -173,8 +174,25 @@ class WebHostActivity : AppCompatActivity() {
             .onFailure { bridge.onDirectoryPicked(null) }
     }
 
+    /** 发起系统图片选择器（library.pickCoverImage）；结果经 onCoverImagePicked 回填桥 */
+    fun launchCoverPicker() {
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "image/*"
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        runCatching { startActivityForResult(intent, REQ_PICK_COVER) }
+            .onFailure { bridge.onCoverImagePicked(null) }
+    }
+
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == REQ_PICK_COVER) {
+            bridge.onCoverImagePicked(
+                if (resultCode == RESULT_OK) data?.data?.toString() else null
+            )
+            return
+        }
         if (requestCode == REQ_PICK_DIR) {
             val uri = if (resultCode == RESULT_OK) data?.data?.toString() else null
             if (uri != null) {
