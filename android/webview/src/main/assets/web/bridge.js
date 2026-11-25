@@ -83,6 +83,8 @@
     'nowPlaying.onLyricChange': 'nowPlaying:lyric-change',
     'nowPlaying.onPositionSync': 'nowPlaying:position-sync',
     'nowPlaying.onLyricOffsetChange': 'nowPlaying:lyric-offset-change',
+    'window.onDesktopLyricVisibilityChange': 'desktopLyric:visibilityChange',
+    'desktopLyric.onConfigChange': 'desktopLyric:configChange',
     'streaming.onFavoriteChanged': 'streaming:favoriteChanged',
     'streaming.onSyncState': 'streaming:syncState',
     'update.onEvent': 'update:event',
