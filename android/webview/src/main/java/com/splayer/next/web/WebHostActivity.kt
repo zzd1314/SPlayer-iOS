@@ -1,8 +1,11 @@
 package com.splayer.next.web
 
+import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import android.view.KeyEvent
@@ -15,8 +18,10 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.webkit.WebViewAssetLoader
 import com.splayer.next.web.playback.PlaybackEngine
+import java.lang.ref.WeakReference
 
 /**
  * WebView 宿主：加载 SPlayer-Next 原版渲染层（Vue 前端），
@@ -26,6 +31,24 @@ class WebHostActivity : AppCompatActivity() {
 
     companion object {
         private const val REQ_PICK_DIR = 4001
+        private const val REQ_NOTIFICATION = 4002
+        private const val REQ_RECORD_AUDIO = 4003
+
+        @Volatile
+        private var current: WeakReference<WebHostActivity>? = null
+
+        /** 频谱需要 RECORD_AUDIO：等用户真正打开频谱时再申请，避免启动即弹权限 */
+        fun requestRecordAudioPermissionIfNeeded() {
+            val activity = current?.get() ?: return
+            if (ContextCompat.checkSelfPermission(activity, Manifest.permission.RECORD_AUDIO) ==
+                PackageManager.PERMISSION_GRANTED
+            ) {
+                return
+            }
+            runCatching {
+                activity.requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), REQ_RECORD_AUDIO)
+            }
+        }
     }
 
     lateinit var webView: WebView
@@ -39,6 +62,8 @@ class WebHostActivity : AppCompatActivity() {
 
         val context = applicationContext
         bridge = SPlayerBridge(this, context)
+        current = WeakReference(this)
+        requestNotificationPermissionIfNeeded()
 
         webView = WebView(this)
         webView.layoutParams = ViewGroup.LayoutParams(
@@ -102,6 +127,20 @@ class WebHostActivity : AppCompatActivity() {
         return super.onKeyDown(keyCode, event)
     }
 
+    // MARK: - 通知权限（Android 13+ 媒体通知必需）
+
+    private fun requestNotificationPermissionIfNeeded() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) ==
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            return
+        }
+        runCatching {
+            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), REQ_NOTIFICATION)
+        }
+    }
+
     // MARK: - SAF 目录选择（download.pickDir）
 
     /** 发起系统目录选择器；结果经 onDirectoryPicked 回填桥 */
@@ -134,6 +173,7 @@ class WebHostActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        if (current?.get() === this) current = null
         // 播放引擎保活（后台播放），仅销毁 WebView
         if (webView.parent != null) {
             (webView.parent as ViewGroup).removeView(webView)
