@@ -364,7 +364,8 @@ const jellyfinServer = http.createServer(async (req, res) => {
   if (pathname === `/Users/${jfState.userId}`) {
     return sendJson(res, { Id: jfState.userId, Name: "demo" });
   }
-  if (pathname === "/Items") {
+  const embyItems = /^\/Users\/[^/]+\/Items$/.test(pathname);
+  if (pathname === "/Items" || embyItems) {
     const params = url.searchParams;
     const type = params.get("IncludeItemTypes");
     let list = [];
@@ -403,7 +404,9 @@ const jellyfinServer = http.createServer(async (req, res) => {
     const page = paginate(req, withIds);
     return sendJson(res, { Items: page.items, TotalRecordCount: page.total });
   }
-  const favorite = /^\/UserFavoriteItems\/([^/]+)$/.exec(pathname);
+  const favorite =
+    /^\/UserFavoriteItems\/([^/]+)$/.exec(pathname) ??
+    /^\/Users\/[^/]+\/FavoriteItems\/([^/]+)$/.exec(pathname);
   if (favorite) {
     const id = decodeURIComponent(favorite[1]);
     if (method === "POST") jfState.favorites.add(id);
@@ -425,7 +428,9 @@ const jellyfinServer = http.createServer(async (req, res) => {
   if (image) return sendBytes(res, PNG, "image/png");
   const download = /^\/Items\/([^/]+)\/Download$/.exec(pathname);
   if (download) return sendBytes(res, AUDIO, "application/octet-stream");
-  const item = /^\/Items\/([^/]+)$/.exec(pathname);
+  const item =
+    /^\/Items\/([^/]+)$/.exec(pathname) ??
+    /^\/Users\/[^/]+\/Items\/([^/]+)$/.exec(pathname);
   if (item) {
     const id = decodeURIComponent(item[1]);
     const song = jfSongs.find((entry) => entry.Id === id);
@@ -909,6 +914,57 @@ const run = async () => {
   check("Jellyfin getArtistSongs", () => jfArtistSongs.length === 2);
   const jfLyrics = await handle("getLyrics", jf.id, "js1");
   check("Jellyfin 歌词", () => typeof jfLyrics === "string" && jfLyrics.includes("jelly line one"));
+
+  // ----- Emby（与 Jellyfin 共用 API 契约，仅鉴权头与参数名不同） -----
+  const embyInput = {
+    name: "Mock Emby",
+    type: "emby",
+    url: jfBase,
+    username: "demo",
+    password: "secret",
+  };
+  const emby = await handle("addServer", embyInput);
+  check("Emby addServer 返回 id", () => typeof emby.id === "string" && emby.id.length > 0);
+  const embyPing = await handle("testConnection", embyInput, emby.id);
+  check("Emby testConnection ok", () => embyPing.ok === true);
+  const embyConnect = await handle("connect", emby.id);
+  check("Emby connect ok", () => embyConnect.ok === true);
+
+  const embyCompleted = waitEvent(
+    "streaming:syncState",
+    (payload) => payload.serverId === emby.id && payload.state === "completed",
+  );
+  await handle("sync", emby.id, true);
+  await embyCompleted;
+
+  const embySnap = await handle("getSnapshot", emby.id);
+  check("Emby 歌曲 2 首", () => embySnap.songs.length === 2);
+  const embyCovers = [
+    ...embySnap.songs.flatMap((song) => [song.cover, song.coverOriginal]),
+    ...embySnap.albums.map((album) => album.cover),
+  ].filter(Boolean);
+  check("Emby 封面带 api_key", () =>
+    embyCovers.length > 0 && embyCovers.every((url) => new URL(url).searchParams.has("api_key")),
+  );
+
+  const embyTrack = embySnap.songs.find((song) => song.originalId === "js1");
+  const embyStreamingUrl = `streaming://${encodeURIComponent(emby.id)}/${encodeURIComponent("js1")}?revision=${embyTrack.serverRevision ?? 0}`;
+  const embySource = await bridge.resolveSource(embyStreamingUrl);
+  check("Emby resolveSource 返回 http", () =>
+    /^https?:\/\//.test(embySource.url) && embySource.url.includes("/Audio/js1/stream"),
+  );
+  check("Emby 播放地址带 api_key", () => new URL(embySource.url).searchParams.has("api_key"));
+  check("Emby 请求头用 X-Emby-Authorization", () =>
+    typeof embySource.headers?.["X-Emby-Authorization"] === "string",
+  );
+  const embyDownload = await bridge.resolveDownload(embyStreamingUrl);
+  check("Emby resolveDownload 返回 http", () =>
+    /^https?:\/\//.test(embyDownload) && embyDownload.includes("/Items/js1/Download"),
+  );
+  check("Emby 下载地址带 api_key", () =>
+    new URL(embyDownload).searchParams.has("api_key"),
+  );
+  await handle("removeServer", emby.id);
 
   // ----- 更新身份清空本地库 / 删除服务器 -----
   const jfBeforeUpdate = jfSnap.songs.length;
