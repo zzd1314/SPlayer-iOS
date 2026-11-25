@@ -12,9 +12,15 @@
     "types": [],
     "lib": ["ES2022", "DOM"],
     "paths": {
-      "@main/*": ["../electron/main/*"],
-      "@shared/*": ["../shared/*"]
+      "@main/*": ["../../splayer-next/SPlayer-Dev-SPlayer-Next-5772455/electron/main/*"],
+      "@shared/*": ["../../splayer-next/SPlayer-Dev-SPlayer-Next-5772455/shared/*"]
     }
   },
-  "include": ["src/**/*.ts", "../electron/main/apis/netease/**/*.ts", "../shared/**/*.ts"]
+  "include": [
+    "src/**/*.ts",
+    "../../splayer-next/SPlayer-Dev-SPlayer-Next-5772455/electron/main/services/streaming/**/*.ts",
+    "../../splayer-next/SPlayer-Dev-SPlayer-Next-5772455/electron/main/database/streaming/**/*.ts",
+    "../../splayer-next/SPlayer-Dev-SPlayer-Next-5772455/shared/types/**/*.ts",
+    "../../splayer-next/SPlayer-Dev-SPlayer-Next-5772455/shared/utils/**/*.ts"
+  ]
 }
