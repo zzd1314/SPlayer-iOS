@@ -3,10 +3,6 @@ name: Android Build
 on:
   push:
     branches: [android]
-    # 仅改工作流文件时不需要重新打包，避免无意义的构建与发版
-    paths-ignore:
-      - '.github/workflows/android.yml'
-      - '.github/workflows/delete-android-releases.yml'
   workflow_dispatch:
 
 permissions:
@@ -136,7 +132,16 @@ jobs:
         run: test -f android/webview/src/main/jniLibs/arm64-v8a/librust_android_test.so
 
       - name: Restore signing keystore
-        run: base64 -d android/webview/splayer-debug.jks.b64 > android/webview/splayer-debug.jks
+        env:
+          KEYSTORE_BASE64: ${{ secrets.SIGNING_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > android/webview/splayer-debug.jks
+          elif [ -f android/webview/splayer-debug.jks.b64 ]; then
+            base64 -d android/webview/splayer-debug.jks.b64 > android/webview/splayer-debug.jks
+          else
+            echo "::warning::未提供签名 keystore，构建产物将使用默认调试签名"
+          fi
 
       - name: Build debug APK
         run: gradle -p android :webview:assembleDebug --no-daemon --stacktrace
@@ -146,7 +151,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           # 版本号统一从 build.gradle.kts 读取，避免每次发版都要改工作流
-          VERSION=$(grep -oP 'versionName\s*=\s*"\K[^"]+' android/webview/build.gradle.kts | head -n1)
+          VERSION=$(grep -oP 'appVersionName\s*=\s*"\K[^"]+' android/webview/build.gradle.kts | head -n1)
           if [ -z "$VERSION" ]; then
             echo "未能从 build.gradle.kts 读取 versionName，终止发布"
             exit 1
@@ -165,7 +170,7 @@ jobs:
             echo '**v1.1.6 修复（扫码登录二维码空白 / 设置弹窗排版错乱）**'
             echo '- 二维码空白根因：网易云 API bundle 加载时调用了 Electron 桩上不存在的 app.once("before-quit")，导致 netease-api.js 整体加载即抛 TypeError，所有在线接口（含 login_qr_key）不可用。已为桩补上 once/on/off。'
             echo '- 第二个根因：bridge.js 从 window.NeteaseBridge 取模块，但 bundle 以 dynamic import 加载时该变量只存在于模块作用域，实际入口是 globalThis.__Netease。已改为读取 __Netease，并在缺失时给出明确错误。'
-            echo '- 设置弹窗排版：上游左栏固定 280px，且右侧设置项是「说明文字 + 固定 200px 控件」两列，手机宽度下文字被挤成竖排；新增仅在 ≤720px 生效的样式：左栏收窄到 116px、弹窗占满宽度、设置项改为上下两行。已在 458px 视口下验证。'
+            echo '- 设置弹窗排版：上游左栏固定 280px，手机宽度下把右侧内容挤成竖排；新增仅在 ≤720px 生效的样式，把左栏收窄到 148px 并压缩内边距。'
             echo '- HTTP 代理：网易云请求显式带 Accept-Encoding: gzip,deflate 时，原生 HttpURLConnection 不会自动解压，已补上 gzip/deflate 解压与 Content-Type 保留。'
             echo ''
             echo '**v1.1.5 修复（真机启动仍停诊断面板）**'
