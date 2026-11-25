@@ -27,6 +27,7 @@ class BridgeRouter(private val context: Context, private val bridge: Any?) {
         com.splayer.next.web.SPlayerBridge.activate(b)
         LibraryStore.shared(context)
         NowPlayingState.init(context)
+        CacheManager.init(context)
     }
 
     fun dispatch(ns: String, method: String, args: List<Any?>): Any? = when (ns) {
@@ -42,6 +43,7 @@ class BridgeRouter(private val context: Context, private val bridge: Any?) {
         "playlist" -> playlistStore.handle(method, args)
         "download" -> DownloadManager.handle(method, args)
         "nowPlaying" -> NowPlayingState.handle(method, args)
+        "cache" -> CacheManager.handle(method, args)
         "desktopLyric" -> dispatchDesktopLyric(method)
         "rust" -> RustBridge.probe()
         else -> throw BridgeUnsupportedException("$ns.$method 暂未在 Android 端实现")
