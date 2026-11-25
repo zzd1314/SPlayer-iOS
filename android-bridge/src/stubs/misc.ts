@@ -5,16 +5,16 @@
 
 // MARK: - @main/utils/paths
 
-export const configDir = "/data/splayer";
+export const configDir = "/config";
 
 // MARK: - @main/utils/broadcast
 
-/** 原版向所有窗口广播；Android 端单 WebView，直接分发给已订阅的渲染层回调 */
+/** 原版向所有窗口广播；Android 端单 WebView，直接分发给 bridge.js 的订阅者 */
 export const sendToMain = (channel: string, payload?: unknown): void => {
   try {
-    const dispatch = (globalThis as { __splayerDispatch?: (ch: string, payload: string) => void })
+    const dispatch = (globalThis as { __splayerDispatch?: (ch: string, payload: unknown) => void })
       .__splayerDispatch;
-    dispatch?.(channel, JSON.stringify(payload ?? null));
+    dispatch?.(channel, payload ?? null);
   } catch {
     // 桥未就绪时忽略
   }
