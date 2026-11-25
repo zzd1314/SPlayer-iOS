@@ -87,6 +87,7 @@
     'desktopLyric.onConfigChange': 'desktopLyric:configChange',
     'streaming.onFavoriteChanged': 'streaming:favoriteChanged',
     'streaming.onSyncState': 'streaming:syncState',
+    'streaming.onLibraryUpdated': 'streaming:libraryUpdated',
     'update.onEvent': 'update:event',
     'recognition.onEvent': 'recognition:event',
     'plugins.onEvent': 'plugins:event',
@@ -137,7 +138,7 @@
   let neteasePromise = null
   const loadNetease = () => {
     if (!neteasePromise) {
-      neteasePromise = import('/assets/netease-api.js').then(() => {
+      neteasePromise = import('/assets/assets/netease-api.js').then(() => {
         // entry.ts 通过 globalThis.__Netease 暴露接口；dynamic import 下 esbuild
         // 的 global-name 变量只存在于模块作用域，window.NeteaseBridge 不可见
         const b = window.__Netease || window.NeteaseBridge
@@ -202,7 +203,7 @@
   let streamingPromise = null
   const loadStreaming = () => {
     if (!streamingPromise) {
-      streamingPromise = import('/assets/streaming-api.js').then(() => {
+      streamingPromise = import('/assets/assets/streaming-api.js').then(() => {
         const b = window.StreamingBridge
         b.setNativeCall((ns, method, args) => call(ns, method, args))
         return b
@@ -219,6 +220,73 @@
     },
   })
 
+  /**
+   * 流媒体音源占位符 `streaming://<serverId>/<trackId>` 只有主进程 bundle 认识，
+   * 原生播放/下载/缓存拿到的必须是带鉴权的真实 http(s) 地址，因此统一在桥上替换。
+   */
+  const resolveStreamingUrl = (url, mode) => {
+    if (typeof url !== 'string' || !url.startsWith('streaming:')) return Promise.resolve(url)
+    return loadStreaming().then((b) => {
+      if (mode === 'download') return b.resolveDownload(url)
+      return Promise.resolve(b.resolveSource(url)).then((r) => (r && r.url ? r.url : url))
+    })
+  }
+
+  /** player：load 前解析流媒体源并透传请求头 */
+  const playerNs = new Proxy({}, {
+    get(_t, prop) {
+      if (typeof prop !== 'string' || prop === 'then' || prop === 'toJSON') return undefined
+      if (prop.startsWith('on')) return (cb) => subscribe('player', prop, cb)
+      if (prop === 'load') {
+        return async (source, options) => {
+          const opts = Object.assign({}, options || {})
+          if (typeof source === 'string' && source.startsWith('streaming:')) {
+            const resolved = await loadStreaming().then((b) =>
+              b.resolveSource(source, { playback: true }),
+            )
+            if (resolved && resolved.url) {
+              if (resolved.headers && Object.keys(resolved.headers).length) {
+                opts.httpHeaders = resolved.headers
+              }
+              return call('player', 'load', [resolved.url, opts])
+            }
+          }
+          // 切到本地/其他音源时收尾流媒体播放上报；bundle 未加载则不触发加载
+          if (streamingPromise) {
+            streamingPromise
+              .then((b) => b.playbackStop && b.playbackStop())
+              .catch(() => {})
+          }
+          return call('player', 'load', [source, opts])
+        }
+      }
+      return (...args) => call('player', prop, args)
+    },
+  })
+
+  /** download：渲染层回传的 streaming:// 也要先换成真实地址（原生直接 HttpURLConnection 下载） */
+  const downloadNs = new Proxy({}, {
+    get(_t, prop) {
+      if (typeof prop !== 'string' || prop === 'then' || prop === 'toJSON') return undefined
+      if (prop.startsWith('on')) return (cb) => subscribe('download', prop, cb)
+      if (prop === 'submitResolution') {
+        return async (taskId, res) => {
+          let payload = res
+          if (res && typeof res.url === 'string' && res.url.startsWith('streaming:')) {
+            try {
+              payload = Object.assign({}, res, { url: await resolveStreamingUrl(res.url, 'download') })
+            } catch (e) {
+              console.warn('[bridge] 流媒体下载地址解析失败', e)
+              return call('download', 'failResolution', [taskId])
+            }
+          }
+          return call('download', 'submitResolution', [taskId, payload])
+        }
+      }
+      return (...args) => call('download', prop, args)
+    },
+  })
+
   /** 缓存：song / download 为二级命名空间（preload 契约） */
   const cacheNs = new Proxy({}, {
     get(_t, prop) {
@@ -226,7 +294,10 @@
       if (prop === 'song') {
         return {
           lookup: (key) => call('cache', 'song:lookup', [key]),
-          fetch: (key, source, url, preloadId) => call('cache', 'song:fetch', [key, source, url, preloadId]),
+          fetch: async (key, source, url, preloadId) => {
+            const realUrl = await resolveStreamingUrl(url)
+            return call('cache', 'song:fetch', [key, source, realUrl, preloadId])
+          },
           cancel: (key) => call('cache', 'song:cancel', [key]),
         }
       }
@@ -243,6 +314,8 @@
       if (ns === 'lyrics') return lyricsNs
       if (ns === 'streaming') return streamingNs
       if (ns === 'cache') return cacheNs
+      if (ns === 'player') return playerNs
+      if (ns === 'download') return downloadNs
       return makeNs(ns)
     },
   })
