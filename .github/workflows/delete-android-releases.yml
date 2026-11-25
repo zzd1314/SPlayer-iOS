@@ -1,0 +1,35 @@
+name: Delete Android Releases
+
+# 一次性维护任务：删除仓库里所有 android-* 发行（含 tag）
+# 仅在自身文件变化时触发，不影响正常的 Android 构建
+on:
+  push:
+    branches: [android]
+    paths:
+      - '.github/workflows/delete-android-releases.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete all android-* releases and tags
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          gh release list --limit 200 --json tagName --jq '.[].tagName' | while read -r tag; do
+            case "$tag" in
+              android-*)
+                gh release delete "$tag" --yes --cleanup-tag && echo "deleted release+tag: $tag"
+                ;;
+              *)
+                echo "keep: $tag"
+                ;;
+            esac
+          done
+          echo '--- remaining releases ---'
+          gh release list --limit 200
