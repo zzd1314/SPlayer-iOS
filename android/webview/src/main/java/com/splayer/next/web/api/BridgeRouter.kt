@@ -1,6 +1,8 @@
 package com.splayer.next.web.api
 
 import android.content.Context
+import com.splayer.next.web.lyric.DesktopLyricController
+import com.splayer.next.web.nowplaying.NowPlayingState
 import com.splayer.next.web.playback.PlaybackEngine
 
 /** 桥接未实现时抛出，渲染层按功能降级处理 */
@@ -24,6 +26,7 @@ class BridgeRouter(private val context: Context, private val bridge: Any?) {
         DownloadManager.init(context, b)
         com.splayer.next.web.SPlayerBridge.activate(b)
         LibraryStore.shared(context)
+        NowPlayingState.init(context)
     }
 
     fun dispatch(ns: String, method: String, args: List<Any?>): Any? = when (ns) {
@@ -33,9 +36,13 @@ class BridgeRouter(private val context: Context, private val bridge: Any?) {
         "system" -> dispatchSystem(method, args)
         // initPlayer() 会 await plugins.list()，缺该命名空间会令启动层无法退出
         "plugins" -> dispatchPlugins(method)
+        // 听歌识曲 Android 端未接入：明确返回不支持，避免未捕获的 Promise 拒绝
+        "recognition" -> dispatchRecognition(method)
         "library" -> libraryStore.handle(method, args)
         "playlist" -> playlistStore.handle(method, args)
         "download" -> DownloadManager.handle(method, args)
+        "nowPlaying" -> NowPlayingState.handle(method, args)
+        "desktopLyric" -> dispatchDesktopLyric(method)
         "rust" -> RustBridge.probe()
         else -> throw BridgeUnsupportedException("$ns.$method 暂未在 Android 端实现")
     }
@@ -68,7 +75,7 @@ class BridgeRouter(private val context: Context, private val bridge: Any?) {
     /**
      * 渲染层启动流程第一句是 window.ready()，Electron 下等主进程首帧信号；
      * Android 端 Activity 已在前台，直接返回就绪，否则启动层永远不会移除。
-     * 最大化 / 桌面歌词 / 灵动岛等桌面窗口能力无 Android 对应物，返回空值保持无副作用。
+     * 桌面歌词改由系统悬浮窗实现；灵动岛 / 任务栏歌词无对应物，返回空值保持无副作用。
      */
     private fun dispatchWindow(method: String, args: List<Any?>): Any? = when (method) {
         "ready", "startupComplete" -> true
@@ -79,14 +86,27 @@ class BridgeRouter(private val context: Context, private val bridge: Any?) {
             true
         }
 
-        "isMaximized", "isFullscreen", "isDesktopLyricOpen", "isDynamicIslandOpen",
-        "isTaskbarLyricOpen" -> false
+        "isDesktopLyricOpen" -> DesktopLyricController.isShowing()
+        "isMaximized", "isFullscreen", "isDynamicIslandOpen", "isTaskbarLyricOpen" -> false
+
+        "toggleDesktopLyric" -> DesktopLyricController.toggle(context)
+        "closeDesktopLyric" -> {
+            DesktopLyricController.close(context)
+            null
+        }
 
         "minimize", "toggleMaximize", "toggleFullscreen", "hide", "quit",
-        "toggleDesktopLyric", "closeDesktopLyric", "toggleDynamicIsland",
-        "toggleTaskbarLyric", "setPlayerExpanded" -> null
+        "toggleDynamicIsland", "closeDynamicIsland", "toggleTaskbarLyric", "closeTaskbarLyric",
+        "setPlayerExpanded" -> null
 
         else -> throw BridgeUnsupportedException("window.$method 暂未在 Android 端实现")
+    }
+
+    /** 桌面歌词窗口自带 API（高度/位置持久化）：Android 悬浮窗由原生自理 */
+    private fun dispatchDesktopLyric(method: String): Any? = when (method) {
+        "setHeight", "move", "saveState", "setUnlockButtonBounds" -> null
+        "getConfig" -> configStore.get("desktopLyric") ?: emptyMap<String, Any>()
+        else -> throw BridgeUnsupportedException("desktopLyric.$method 暂未在 Android 端实现")
     }
 
     // MARK: - 插件（Electron 主进程插件宿主在 Android 端不可用）
@@ -101,6 +121,14 @@ class BridgeRouter(private val context: Context, private val bridge: Any?) {
         )
 
         else -> throw BridgeUnsupportedException("plugins.$method 暂未在 Android 端支持")
+    }
+
+    // MARK: - 听歌识曲（Android 端未接入）
+
+    private fun dispatchRecognition(method: String): Any? = when (method) {
+        "isSupported" -> false
+        "start", "stop", "cancel" -> null
+        else -> throw BridgeUnsupportedException("recognition.$method 暂未在 Android 端支持")
     }
 
     // MARK: - 系统能力
