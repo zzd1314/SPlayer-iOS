@@ -1,5 +1,6 @@
 package com.splayer.next.web.playback
 
+import android.app.PendingIntent
 import android.content.Intent
 import android.os.IBinder
 import androidx.media3.common.ForwardingPlayer
@@ -45,7 +46,16 @@ class PlaybackService : MediaSessionService() {
             override fun seekToPrevious() = PlaybackEngine.onSkipToPrevious()
             override fun seekToPreviousMediaItem() = PlaybackEngine.onSkipToPrevious()
         }
-        mediaSession = MediaSession.Builder(this, forwarded).build()
+        // 点击通知/锁屏封面回到应用主界面
+        val sessionActivity = PendingIntent.getActivity(
+            this,
+            0,
+            Intent(this, com.splayer.next.web.WebHostActivity::class.java),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        mediaSession = MediaSession.Builder(this, forwarded)
+            .setSessionActivity(sessionActivity)
+            .build()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
