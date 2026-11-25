@@ -1,10 +1,10 @@
 /**
  * Android 端流媒体 bundle 入口。
- * 直接复用 SPlayer-Next 主进程的 streaming 服务层（config/connection/library/
- * sync/favorites/snapshot + subsonic/jellyfin adapters），
- * 通过 stub 将 electron 专属依赖替换为浏览器等价实现。
- * 暴露 globalThis.StreamingBridge.handle(method, args)，与 preload 的 streaming.* 契约一致。
+ * 复用 SPlayer-Next 主进程 streaming 服务层（config/connection/library/sync/favorites/
+ * snapshot + subsonic/jellyfin adapters），通过 stub 与网络垫片适配 WebView。
+ * 暴露 window.StreamingBridge，契约与 bridge.js 保持一致。
  */
+import "./boot";
 import {
   addStreamingServer,
   getStreamingConfig,
@@ -26,23 +26,15 @@ import {
 import { requestStreamingFavorite } from "@main/services/streaming/favorites";
 import { cancelStreamingSync, queueStreamingSync } from "@main/services/streaming/sync";
 import { invalidateStreamingSession } from "@main/services/streaming/adapters/resolve";
-import { isDbOpen } from "@main/database";
+import { deleteStreamingLibraryByServer } from "./stubs/db";
+import { parseStreamingSource } from "@shared/utils/streamingSource";
 import type { StreamingServerInput } from "@shared/types/streaming";
 
-/** 原生桥调用（由 bridge.js 注入），用于切换服务器时停止原生播放 */
+/** 原生桥调用（由 bridge.js 注入），Android 端当前不需要主动调用原生 */
 type NativeCall = (ns: string, method: string, args: unknown[]) => Promise<unknown>;
 let nativeCall: NativeCall | null = null;
 
-/** 对应 ipc/player.ts 的 stopStreamingPlayer：Android 端转发给原生播放引擎 */
-const stopStreamingPlayer = async (serverId: string): Promise<void> => {
-  try {
-    await nativeCall?.("player", "stop", [serverId]);
-  } catch {
-    // 原生桥未就绪时忽略（无播放进行中）
-  }
-};
-
-/** 复刻 electron/main/ipc/streaming.ts 的全部 handler 语义 */
+/** 复刻 electron/main/ipc/streaming.ts 的 handler 语义（去掉桌面播放器调用） */
 const handlers: Record<string, (...args: any[]) => unknown> = {
   loadServers: () => getStreamingConfig(),
   addServer: (input: StreamingServerInput) => addStreamingServer(input),
@@ -55,21 +47,21 @@ const handlers: Record<string, (...args: any[]) => unknown> = {
       Boolean(input.password);
     if (!identityChanged) return updateStreamingServer(serverId, input);
     cancelStreamingSync(serverId);
-    await stopStreamingPlayer(serverId);
     const updated = await updateStreamingServer(serverId, input);
     invalidateStreamingSession(serverId);
     cancelStreamingSync(serverId);
-    if (identityChanged && isDbOpen()) deleteLibraryByServer(serverId);
+    // Android 没有独立播放进程，直接清空本地媒体库
+    deleteLibraryByServer(serverId);
+    deleteStreamingLibraryByServer(serverId);
     return updated;
   },
   removeServer: async (serverId: string) => {
     cancelStreamingSync(serverId);
-    await stopStreamingPlayer(serverId);
     invalidateStreamingSession(serverId);
     cancelStreamingSync(serverId);
     removeStreamingServer(serverId);
-    if (isDbOpen()) deleteLibraryByServer(serverId);
-    return null;
+    deleteLibraryByServer(serverId);
+    deleteStreamingLibraryByServer(serverId);
   },
   setActiveServer: (serverId: string | null) => setActiveStreamingServer(serverId),
   testConnection: (input: StreamingServerInput, serverId?: string) =>
@@ -77,38 +69,108 @@ const handlers: Record<string, (...args: any[]) => unknown> = {
   connect: (serverId: string) => connectStreamingServer(serverId),
   disconnect: async (serverId: string) => {
     cancelStreamingSync(serverId);
-    await stopStreamingPlayer(serverId);
     invalidateStreamingSession(serverId);
-    return null;
   },
-  getFavorite: (serverId: string, trackId: string) =>
-    requestStreamingFavorite(serverId, trackId),
+  getFavorite: (serverId: string, trackId: string) => requestStreamingFavorite(serverId, trackId),
   setFavorite: (serverId: string, trackId: string, value: boolean) =>
     requestStreamingFavorite(serverId, trackId, value),
   getSnapshot: (serverId: string) => getLibrarySnapshot(serverId),
   sync: async (serverId: string, force = false) =>
     queueStreamingSync(await getStreamingServer(serverId), force),
-  search: (serverId: string, query: string) => searchLibrary(serverId, String(query ?? "").slice(0, 200)),
+  search: (serverId: string, query: string) =>
+    searchLibrary(serverId, String(query ?? "").slice(0, 200)),
   getAlbumSongs: (serverId: string, albumId: string) =>
     withStreamingAdapter(serverId, (config, adapter) => adapter.getAlbumSongs(config, albumId)),
   getPlaylistSongs: (serverId: string, playlistId: string) =>
-    withStreamingAdapter(serverId, (config, adapter) => adapter.getPlaylistSongs(config, playlistId)),
+    withStreamingAdapter(serverId, (config, adapter) =>
+      adapter.getPlaylistSongs(config, playlistId),
+    ),
   getArtistAlbums: (serverId: string, artistId: string) =>
     withStreamingAdapter(serverId, (config, adapter) => adapter.getArtistAlbums(config, artistId)),
   getArtistSongs: (serverId: string, artistId: string) =>
     withStreamingAdapter(serverId, (config, adapter) => adapter.getArtistSongs(config, artistId)),
-  getLyrics: (
-    serverId: string,
-    trackId: string,
-    hint?: { artist?: string; title?: string },
-  ) => withStreamingAdapter(serverId, (config, adapter) => adapter.getLyrics(config, trackId, hint)),
+  getLyrics: (serverId: string, trackId: string, hint?: { artist?: string; title?: string }) =>
+    withStreamingAdapter(serverId, (config, adapter) => adapter.getLyrics(config, trackId, hint)),
 };
 
+/** 为 Jellyfin/Emby 附带 Authorization，Subsonic 鉴权全在 URL 查询参数里 */
+const playbackHeaders = (
+  config: { type: string; id: string; accessToken?: string },
+): Record<string, string> | undefined => {
+  if ((config.type !== "jellyfin" && config.type !== "emby") || !config.accessToken) return undefined;
+  const header = config.type === "emby" ? "X-Emby-Authorization" : "Authorization";
+  return {
+    [header]: `MediaBrowser Client="SPlayer-Next", Device="SPlayer Android", DeviceId="splayer-next-${config.id}", Version="1.0.0", Token="${config.accessToken}"`,
+  };
+};
+
+/**
+ * 把 streaming:// 占位符解析为带鉴权的真实播放地址
+ * @param streamingUrl - 渲染层生成的音源身份
+ * @returns 真实地址与可选请求头
+ */
+const resolveSource = async (
+  streamingUrl: string,
+): Promise<{ url: string; headers?: Record<string, string> }> => {
+  const { serverId, trackId, serverRevision } = parseStreamingSource(streamingUrl);
+  const sessionId =
+    typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  return withStreamingAdapter(serverId, async (config, adapter) => {
+    if ((config.mediaRevision ?? 0) !== serverRevision)
+      throw new Error("流媒体账号或地址已更新，请重新选择歌曲");
+    const source = await adapter.preparePlayback(config, trackId, sessionId);
+    return { url: source.url, headers: playbackHeaders(config) };
+  });
+};
+
+/**
+ * 把 streaming:// 占位符解析为下载地址
+ * @param streamingUrl - 渲染层生成的音源身份
+ * @returns 原文件下载地址
+ */
+const resolveDownload = async (streamingUrl: string): Promise<string> => {
+  const { serverId, trackId, serverRevision } = parseStreamingSource(streamingUrl);
+  return withStreamingAdapter(serverId, async (config, adapter) => {
+    if ((config.mediaRevision ?? 0) !== serverRevision)
+      throw new Error("流媒体账号或地址已更新，请重新选择歌曲");
+    return adapter.getDownloadUrl(config, trackId);
+  });
+};
+
+/**
+ * 生成带鉴权的真实封面地址
+ * @param serverId - 服务器 ID
+ * @param coverId - 服务端封面 ID
+ * @param size - 目标尺寸
+ * @param tag - 封面版本标识
+ * @returns 真实封面地址；失败时返回 null
+ */
+const coverUrl = async (
+  serverId: string,
+  coverId: string,
+  size = 300,
+  tag?: string,
+): Promise<string | null> => {
+  if (!coverId) return null;
+  const normalized = Math.min(2000, Math.max(32, Number(size) || 300));
+  try {
+    return await withStreamingAdapter(serverId, (config, adapter) =>
+      adapter.getCoverUrl(config, coverId, normalized, tag),
+    );
+  } catch {
+    return null;
+  }
+};
+
+/** 与 bridge.js 约定的对外接口 */
 interface StreamingApi {
-  /** 注入原生桥调用器（bridge.js 加载本 bundle 后调用） */
   setNativeCall: (fn: NativeCall | null) => void;
-  /** 统一分发入口：method 对应 preload 的 streaming.* 方法名 */
   handle: (method: string, args: unknown[]) => Promise<unknown>;
+  resolveSource: (streamingUrl: string) => Promise<{ url: string; headers?: Record<string, string> }>;
+  resolveDownload: (streamingUrl: string) => Promise<string>;
+  coverUrl: (serverId: string, coverId: string, size?: number, tag?: string) => Promise<string | null>;
 }
 
 const api: StreamingApi = {
@@ -117,11 +179,12 @@ const api: StreamingApi = {
   },
   handle: async (method, args) => {
     const handler = handlers[method];
-    if (!handler) {
-      throw new Error(`streaming.${method} 暂未在 Android 端实现`);
-    }
+    if (!handler) throw new Error(`streaming.${method} 暂未在 Android 端实现`);
     return handler(...(args ?? []));
   },
+  resolveSource,
+  resolveDownload,
+  coverUrl,
 };
 
 (globalThis as unknown as { StreamingBridge: StreamingApi }).StreamingBridge = api;
