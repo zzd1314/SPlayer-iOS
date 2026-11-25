@@ -27,6 +27,7 @@ import { requestStreamingFavorite } from "@main/services/streaming/favorites";
 import { cancelStreamingSync, queueStreamingSync } from "@main/services/streaming/sync";
 import { invalidateStreamingSession } from "@main/services/streaming/adapters/resolve";
 import { deleteStreamingLibraryByServer } from "./stubs/db";
+import { beginStreamingPlayback, onPlayerEvent, stopStreamingPlayback } from "./playback";
 import { parseStreamingSource } from "@shared/utils/streamingSource";
 import type { StreamingServerInput } from "@shared/types/streaming";
 
@@ -107,11 +108,13 @@ const playbackHeaders = (
 /**
  * 把 streaming:// 占位符解析为带鉴权的真实播放地址
  * @param streamingUrl - 渲染层生成的音源身份
- * @returns 真实地址与可选请求头
+ * @param options - playback 为 true 时同步绑定播放上报会话（仅真正的播放加载传）
+ * @returns 真实地址、可选请求头与会话 ID
  */
 const resolveSource = async (
   streamingUrl: string,
-): Promise<{ url: string; headers?: Record<string, string> }> => {
+  options?: { playback?: boolean },
+): Promise<{ url: string; headers?: Record<string, string>; sessionId: string }> => {
   const { serverId, trackId, serverRevision } = parseStreamingSource(streamingUrl);
   const sessionId =
     typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
@@ -121,7 +124,16 @@ const resolveSource = async (
     if ((config.mediaRevision ?? 0) !== serverRevision)
       throw new Error("流媒体账号或地址已更新，请重新选择歌曲");
     const source = await adapter.preparePlayback(config, trackId, sessionId);
-    return { url: source.url, headers: playbackHeaders(config) };
+    if (options?.playback) {
+      beginStreamingPlayback({
+        serverId,
+        trackId,
+        sessionId,
+        mediaSourceId: source.mediaSourceId,
+        durationMs: source.durationMs,
+      });
+    }
+    return { url: source.url, headers: playbackHeaders(config), sessionId };
   });
 };
 
@@ -168,9 +180,13 @@ const coverUrl = async (
 interface StreamingApi {
   setNativeCall: (fn: NativeCall | null) => void;
   handle: (method: string, args: unknown[]) => Promise<unknown>;
-  resolveSource: (streamingUrl: string) => Promise<{ url: string; headers?: Record<string, string> }>;
+  resolveSource: (
+    streamingUrl: string,
+    options?: { playback?: boolean },
+  ) => Promise<{ url: string; headers?: Record<string, string>; sessionId: string }>;
   resolveDownload: (streamingUrl: string) => Promise<string>;
   coverUrl: (serverId: string, coverId: string, size?: number, tag?: string) => Promise<string | null>;
+  playbackStop: (serverId?: string) => Promise<void>;
 }
 
 const api: StreamingApi = {
@@ -185,8 +201,14 @@ const api: StreamingApi = {
   resolveSource,
   resolveDownload,
   coverUrl,
+  playbackStop: (serverId?: string) => stopStreamingPlayback(serverId),
 };
 
 (globalThis as unknown as { StreamingBridge: StreamingApi }).StreamingBridge = api;
+
+// 原生播放事件驱动播放上报；bundle 在 player.load 解析阶段加载，能覆盖整段播放
+const playerApi = (globalThis as unknown as { api?: { player?: { onEvent?: (cb: typeof onPlayerEvent) => void } } })
+  .api?.player;
+if (playerApi && typeof playerApi.onEvent === "function") playerApi.onEvent(onPlayerEvent);
 
 console.info("[streaming-bundle] ready");
